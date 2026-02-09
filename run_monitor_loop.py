@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""
+Railway Entry Point: 7DTE Option Flow Monitor Loop
+
+Runs monitor_7day_alerts every 5 minutes during US market hours
+(Mon-Fri 9:30 AM - 4:00 PM Eastern), then sleeps until next market open.
+"""
+
+import time
+import sys
+import traceback
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+# Import the monitor's main function directly
+from tools.monitor_7day_alerts import main as run_monitor
+
+ET = ZoneInfo("America/New_York")
+INTERVAL_SECONDS = 5 * 60  # 5 minutes
+
+# Market hours (Eastern Time)
+MARKET_OPEN_HOUR, MARKET_OPEN_MIN = 9, 30
+MARKET_CLOSE_HOUR, MARKET_CLOSE_MIN = 16, 0
+
+
+def now_et():
+    return datetime.now(ET)
+
+
+def is_market_hours():
+    """Check if current time is within US market hours (Mon-Fri 9:30-16:00 ET)."""
+    t = now_et()
+    # Monday=0, Friday=4
+    if t.weekday() > 4:
+        return False
+    market_open = t.replace(hour=MARKET_OPEN_HOUR, minute=MARKET_OPEN_MIN, second=0, microsecond=0)
+    market_close = t.replace(hour=MARKET_CLOSE_HOUR, minute=MARKET_CLOSE_MIN, second=0, microsecond=0)
+    return market_open <= t <= market_close
+
+
+def seconds_until_next_market_open():
+    """Calculate seconds until the next market open."""
+    t = now_et()
+    today_open = t.replace(hour=MARKET_OPEN_HOUR, minute=MARKET_OPEN_MIN, second=0, microsecond=0)
+
+    if t.weekday() <= 4 and t < today_open:
+        # Today is a weekday and market hasn't opened yet
+        return (today_open - t).total_seconds()
+
+    # Find next weekday
+    days_ahead = 1
+    next_day = t + timedelta(days=days_ahead)
+    while next_day.weekday() > 4:
+        days_ahead += 1
+        next_day = t + timedelta(days=days_ahead)
+
+    next_open = next_day.replace(hour=MARKET_OPEN_HOUR, minute=MARKET_OPEN_MIN, second=0, microsecond=0)
+    return (next_open - t).total_seconds()
+
+
+def main():
+    print("=" * 60)
+    print("7DTE OPTION FLOW MONITOR - LOOP MODE")
+    print(f"Interval: {INTERVAL_SECONDS // 60} minutes")
+    print(f"Market hours: {MARKET_OPEN_HOUR}:{MARKET_OPEN_MIN:02d} - {MARKET_CLOSE_HOUR}:{MARKET_CLOSE_MIN:02d} ET")
+    print("=" * 60)
+
+    # Patch sys.argv so the monitor's argparse doesn't see loop args
+    sys.argv = [sys.argv[0]]
+
+    while True:
+        if is_market_hours():
+            print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] Running monitor...")
+            try:
+                run_monitor()
+            except Exception as e:
+                print(f"Monitor error (will retry next interval): {e}")
+                traceback.print_exc()
+
+            print(f"Sleeping {INTERVAL_SECONDS // 60} minutes...")
+            time.sleep(INTERVAL_SECONDS)
+        else:
+            wait = seconds_until_next_market_open()
+            wait_hours = wait / 3600
+            next_open = now_et() + timedelta(seconds=wait)
+            print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] Market closed.")
+            print(f"Next open: {next_open.strftime('%A %Y-%m-%d %H:%M ET')} ({wait_hours:.1f} hours)")
+            # Sleep in chunks so we can log periodically
+            while wait > 0:
+                chunk = min(wait, 3600)  # sleep max 1 hour at a time
+                time.sleep(chunk)
+                wait -= chunk
+
+
+if __name__ == "__main__":
+    main()

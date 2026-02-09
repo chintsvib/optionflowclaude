@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(python3:*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(python tools/visualize_option_flow.py:*)",
+      "Bash(ls:*)",
+      "Bash(python:*)"
+    ]
+  }
+}
