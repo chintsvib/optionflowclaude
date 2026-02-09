@@ -22,6 +22,7 @@ import re
 import hashlib
 import argparse
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 
 # Add project root to path so we can import sibling tools
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -169,6 +170,8 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
     alerts = []
 
     # Try to find relevant columns by common header names
+    date_idx = find_column_index(headers, "today's date", "date")
+    time_idx = find_column_index(headers, "time")
     ticker_idx = find_column_index(headers, "ticker", "symbol", "stock")
     xmonth_idx = find_column_index(headers, "xmonth")
     xdate_idx = find_column_index(headers, "xdate")
@@ -178,6 +181,7 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
     put_dollar_idx = find_column_index(headers, "puts $", "put$", "put $", "put dollar")
     call_qty_idx = find_column_index(headers, "calls qty", "call qty", "call quantity", "# calls", "call vol")
     put_qty_idx = find_column_index(headers, "puts qty", "put qty", "put quantity", "# puts", "put vol")
+    insights_idx = find_column_index(headers, "order insights", "insights")
 
     print(f"\n  [{side_label}] Column mapping:")
     print(f"    Ticker:   col {ticker_idx}  ({safe_get(headers, ticker_idx, '?')})")
@@ -191,6 +195,8 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
     for row_offset, row in enumerate(data_rows):
         # Sheet row number (1-indexed, accounting for header at row 4, data starts row 5)
         sheet_row = row_offset + 5
+        row_date = safe_get(row, date_idx, "")
+        row_time = safe_get(row, time_idx, "")
         ticker = safe_get(row, ticker_idx, "???")
         # Build expiry from xMonth+xDate if no single expiry column
         if expiry_idx is not None:
@@ -201,42 +207,37 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
             expiry = ""
         strike = safe_get(row, strike_idx, "")
         label = f"{ticker} {expiry} {strike}".strip()
+        insights = safe_get(row, insights_idx, "")
+
+        # Common fields for each alert from this row
+        base = {
+            "side": side_label, "row": sheet_row, "label": label,
+            "date": row_date, "time": row_time, "insights": insights,
+        }
 
         # Check Call$
         if call_dollar_idx is not None:
             val = parse_dollar(safe_get(row, call_dollar_idx))
             if val > dollar_threshold:
-                alerts.append({
-                    "side": side_label, "row": sheet_row, "label": label,
-                    "field": "Call$", "value": val, "threshold": dollar_threshold,
-                })
+                alerts.append({**base, "field": "Call$", "value": val, "threshold": dollar_threshold})
 
         # Check Put$
         if put_dollar_idx is not None:
             val = parse_dollar(safe_get(row, put_dollar_idx))
             if val > dollar_threshold:
-                alerts.append({
-                    "side": side_label, "row": sheet_row, "label": label,
-                    "field": "Put$", "value": val, "threshold": dollar_threshold,
-                })
+                alerts.append({**base, "field": "Put$", "value": val, "threshold": dollar_threshold})
 
         # Check Call Qty
         if call_qty_idx is not None:
             val = parse_qty(safe_get(row, call_qty_idx))
             if val > qty_threshold:
-                alerts.append({
-                    "side": side_label, "row": sheet_row, "label": label,
-                    "field": "Call Qty", "value": val, "threshold": qty_threshold,
-                })
+                alerts.append({**base, "field": "Call Qty", "value": val, "threshold": qty_threshold})
 
         # Check Put Qty
         if put_qty_idx is not None:
             val = parse_qty(safe_get(row, put_qty_idx))
             if val > qty_threshold:
-                alerts.append({
-                    "side": side_label, "row": sheet_row, "label": label,
-                    "field": "Put Qty", "value": val, "threshold": qty_threshold,
-                })
+                alerts.append({**base, "field": "Put Qty", "value": val, "threshold": qty_threshold})
 
     return alerts
 
@@ -259,7 +260,7 @@ def format_qty(val):
 
 def build_alert_message(alerts):
     """Build a Telegram-friendly HTML alert message."""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M ET")
     lines = [f"<b>7DTE Option Flow Alert</b>  ({now})\n"]
 
     for a in alerts:
@@ -270,10 +271,19 @@ def build_alert_message(alerts):
             display_val = format_number(a["value"])
             display_thresh = format_number(a["threshold"])
 
+        # Date/time from the sheet row
+        when = f"{a.get('date', '')} {a.get('time', '')}".strip()
+        when_line = f"  {when}\n" if when else ""
+
+        # Order Insights
+        insights = a.get("insights", "")
+        insights_line = f"  Insight: <i>{insights}</i>\n" if insights else ""
+
         lines.append(
-            f"  Row {a['row']} | <b>{a['label']}</b>\n"
+            f"{when_line}"
+            f"  <b>{a['label']}</b> ({a['side']})\n"
             f"  {a['field']}: <b>{display_val}</b> (threshold: {display_thresh})\n"
-            f"  Side: {a['side']}\n"
+            f"{insights_line}"
         )
 
     lines.append(f"Total alerts: {len(alerts)}")
