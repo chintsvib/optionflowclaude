@@ -115,7 +115,9 @@ STATE_FILE = os.path.join(STATE_DIR, "7day_alert_state.json")
 
 def _alert_key(alert):
     """Create a unique key for an alert based on its content."""
-    raw = f"{alert['side']}|{alert['label']}|{alert['field']}|{alert['value']}"
+    raw = (f"{alert['side']}|{alert['label']}|{alert['field']}|"
+           f"{alert.get('call_dollar',0)}|{alert.get('call_qty',0)}|"
+           f"{alert.get('put_dollar',0)}|{alert.get('put_qty',0)}")
     return hashlib.md5(raw.encode()).hexdigest()
 
 
@@ -209,35 +211,27 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
         label = f"{ticker} {expiry} {strike}".strip()
         insights = safe_get(row, insights_idx, "")
 
+        # Parse all four values for this row
+        call_dollar_val = parse_dollar(safe_get(row, call_dollar_idx)) if call_dollar_idx is not None else 0.0
+        put_dollar_val = parse_dollar(safe_get(row, put_dollar_idx)) if put_dollar_idx is not None else 0.0
+        call_qty_val = parse_qty(safe_get(row, call_qty_idx)) if call_qty_idx is not None else 0.0
+        put_qty_val = parse_qty(safe_get(row, put_qty_idx)) if put_qty_idx is not None else 0.0
+
         # Common fields for each alert from this row
         base = {
             "side": side_label, "row": sheet_row, "label": label,
             "date": row_date, "time": row_time, "insights": insights,
+            "call_dollar": call_dollar_val, "put_dollar": put_dollar_val,
+            "call_qty": call_qty_val, "put_qty": put_qty_val,
         }
 
-        # Check Call$
-        if call_dollar_idx is not None:
-            val = parse_dollar(safe_get(row, call_dollar_idx))
-            if val > dollar_threshold:
-                alerts.append({**base, "field": "Call$", "value": val, "threshold": dollar_threshold})
+        # Check Call$ or Call Qty
+        if call_dollar_val > dollar_threshold or call_qty_val > qty_threshold:
+            alerts.append({**base, "field": "Call", "value": 0, "threshold": 0})
 
-        # Check Put$
-        if put_dollar_idx is not None:
-            val = parse_dollar(safe_get(row, put_dollar_idx))
-            if val > dollar_threshold:
-                alerts.append({**base, "field": "Put$", "value": val, "threshold": dollar_threshold})
-
-        # Check Call Qty
-        if call_qty_idx is not None:
-            val = parse_qty(safe_get(row, call_qty_idx))
-            if val > qty_threshold:
-                alerts.append({**base, "field": "Call Qty", "value": val, "threshold": qty_threshold})
-
-        # Check Put Qty
-        if put_qty_idx is not None:
-            val = parse_qty(safe_get(row, put_qty_idx))
-            if val > qty_threshold:
-                alerts.append({**base, "field": "Put Qty", "value": val, "threshold": qty_threshold})
+        # Check Put$ or Put Qty
+        if put_dollar_val > dollar_threshold or put_qty_val > qty_threshold:
+            alerts.append({**base, "field": "Put", "value": 0, "threshold": 0})
 
     return alerts
 
@@ -264,12 +258,14 @@ def build_alert_message(alerts):
     lines = [f"<b>7DTE Option Flow Alert</b>  ({now})\n"]
 
     for a in alerts:
-        if "Qty" in a["field"]:
-            display_val = format_qty(a["value"])
-            display_thresh = format_qty(a["threshold"])
+        side_type = a["field"]  # "Call" or "Put"
+
+        if side_type == "Call":
+            dollar_val = a.get("call_dollar", 0)
+            qty_val = a.get("call_qty", 0)
         else:
-            display_val = format_number(a["value"])
-            display_thresh = format_number(a["threshold"])
+            dollar_val = a.get("put_dollar", 0)
+            qty_val = a.get("put_qty", 0)
 
         # Date/time from the sheet row
         when = f"{a.get('date', '')} {a.get('time', '')}".strip()
@@ -282,7 +278,8 @@ def build_alert_message(alerts):
         lines.append(
             f"{when_line}"
             f"  <b>{a['label']}</b> ({a['side']})\n"
-            f"  {a['field']}: <b>{display_val}</b> (threshold: {display_thresh})\n"
+            f"  {side_type} Qty: <b>{format_qty(qty_val)}</b>  |  "
+            f"{side_type}$: <b>{format_number(dollar_val)}</b>\n"
             f"{insights_line}"
         )
 
