@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from tools.monitor_7day_alerts import main as run_monitor
 
 ET = ZoneInfo("America/New_York")
-INTERVAL_SECONDS = 5 * 60  # 5 minutes
+INTERVAL_SECONDS = 60  # 1 minute
 
 # Market hours (Eastern Time)
 MARKET_OPEN_HOUR, MARKET_OPEN_MIN = 9, 30
