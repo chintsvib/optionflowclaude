@@ -14,7 +14,9 @@ COPY config.json .
 COPY run_monitor_loop.py .
 COPY tools/read_google_sheet.py tools/
 COPY tools/send_telegram.py tools/
+COPY tools/monitor_utils.py tools/
 COPY tools/monitor_7day_alerts.py tools/
+COPY tools/monitor_floor_alerts.py tools/
 COPY tools/__init__.py tools/
 
 CMD ["python", "run_monitor_loop.py"]

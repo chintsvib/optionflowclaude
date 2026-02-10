@@ -12,8 +12,9 @@ import traceback
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-# Import the monitor's main function directly
+# Import both monitors' main functions
 from tools.monitor_7day_alerts import main as run_monitor
+from tools.monitor_floor_alerts import main as run_floor_monitor
 
 ET = ZoneInfo("America/New_York")
 INTERVAL_SECONDS = 60  # 1 minute
@@ -70,11 +71,20 @@ def main():
 
     while True:
         if is_market_hours():
-            print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] Running monitor...")
+            print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] Running monitors...")
+
+            # 7DTE monitor
             try:
                 run_monitor()
             except Exception as e:
-                print(f"Monitor error (will retry next interval): {e}")
+                print(f"7DTE monitor error (will retry next interval): {e}")
+                traceback.print_exc()
+
+            # Floor Trader monitor
+            try:
+                run_floor_monitor()
+            except Exception as e:
+                print(f"Floor monitor error (will retry next interval): {e}")
                 traceback.print_exc()
 
             print(f"Sleeping {INTERVAL_SECONDS // 60} minutes...")

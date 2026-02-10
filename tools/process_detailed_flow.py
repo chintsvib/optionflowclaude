@@ -333,14 +333,17 @@ def main():
 
     # Sentiment breakdown
     print("\n=== Sentiment Breakdown ===")
-    sentiment_summary = df.groupby('sentiment').agg({
-        'total_dollar': 'sum',
-        'total_qty': 'sum'
-    }).sort_values('total_dollar', ascending=False)
+    if df.empty:
+        print("No data to summarize.")
+    else:
+        sentiment_summary = df.groupby('sentiment').agg({
+            'total_dollar': 'sum',
+            'total_qty': 'sum'
+        }).sort_values('total_dollar', ascending=False)
 
-    print(sentiment_summary.to_string())
-    print(f"\nBullish flow: ${df[df['sentiment'].str.contains('Bullish', na=False)]['total_dollar'].sum():,.0f}")
-    print(f"Bearish flow: ${df[df['sentiment'].str.contains('Bearish', na=False)]['total_dollar'].sum():,.0f}")
+        print(sentiment_summary.to_string())
+        print(f"\nBullish flow: ${df[df['sentiment'].str.contains('Bullish', na=False)]['total_dollar'].sum():,.0f}")
+        print(f"Bearish flow: ${df[df['sentiment'].str.contains('Bearish', na=False)]['total_dollar'].sum():,.0f}")
 
     return df
 

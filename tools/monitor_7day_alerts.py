@@ -18,10 +18,8 @@ Usage:
 import os
 import sys
 import json
-import re
-import hashlib
 import argparse
-from datetime import datetime, date
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 # Add project root to path so we can import sibling tools
@@ -29,133 +27,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tools.read_google_sheet import get_credentials, extract_sheet_id, read_sheet
 from tools.send_telegram import send_telegram
+from tools.monitor_utils import (
+    parse_dollar, parse_qty, find_column_index, safe_get,
+    format_number, format_qty, filter_new_alerts,
+)
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def parse_dollar(value):
-    """
-    Parse a dollar string into a float.
-    Handles: "$1,234,567", "$1.2M", "1234567", "$500K", empty/missing, etc.
-    Returns 0.0 if unparseable.
-    """
-    if not value or not str(value).strip():
-        return 0.0
-    s = str(value).strip().replace("$", "").replace(",", "").strip()
-    try:
-        # Handle suffixes like M, K, B
-        multiplier = 1.0
-        if s[-1].upper() == "M":
-            multiplier = 1_000_000
-            s = s[:-1]
-        elif s[-1].upper() == "K":
-            multiplier = 1_000
-            s = s[:-1]
-        elif s[-1].upper() == "B":
-            multiplier = 1_000_000_000
-            s = s[:-1]
-        return float(s) * multiplier
-    except (ValueError, IndexError):
-        return 0.0
-
-
-def parse_qty(value):
-    """
-    Parse a quantity string into a float.
-    Handles: "1,234", "1234", "1.2K", empty/missing, etc.
-    Returns 0.0 if unparseable.
-    """
-    if not value or not str(value).strip():
-        return 0.0
-    s = str(value).strip().replace(",", "").strip()
-    try:
-        multiplier = 1.0
-        if s[-1].upper() == "K":
-            multiplier = 1_000
-            s = s[:-1]
-        elif s[-1].upper() == "M":
-            multiplier = 1_000_000
-            s = s[:-1]
-        return float(s) * multiplier
-    except (ValueError, IndexError):
-        return 0.0
-
-
-def find_column_index(headers, *patterns):
-    """
-    Find the column index whose header matches any of the given patterns
-    (case-insensitive substring match, whitespace-normalized).
-    Returns index or None.
-    """
-    for i, h in enumerate(headers):
-        # Normalize: replace newlines/tabs with space, collapse multiple spaces
-        h_norm = re.sub(r"\s+", " ", str(h)).strip().lower()
-        for pat in patterns:
-            if pat.lower() in h_norm:
-                return i
-    return None
-
-
-def safe_get(row, idx, default=""):
-    """Safely get a value from a row list by index."""
-    if idx is not None and idx < len(row):
-        return row[idx]
-    return default
-
-
-# ---------------------------------------------------------------------------
-# Deduplication — only alert on NEW entries since last run
-# ---------------------------------------------------------------------------
-
-STATE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".tmp")
-STATE_FILE = os.path.join(STATE_DIR, "7day_alert_state.json")
-
-
-def _alert_key(alert):
-    """Create a unique key for an alert based on its content."""
-    raw = (f"{alert['side']}|{alert['label']}|{alert['field']}|"
-           f"{alert.get('call_dollar',0)}|{alert.get('call_qty',0)}|"
-           f"{alert.get('put_dollar',0)}|{alert.get('put_qty',0)}")
-    return hashlib.md5(raw.encode()).hexdigest()
-
-
-def load_state():
-    """Load previously seen alert keys. Resets automatically each day."""
-    if not os.path.exists(STATE_FILE):
-        return {"date": str(date.today()), "seen": []}
-    try:
-        with open(STATE_FILE, "r") as f:
-            state = json.load(f)
-        # Reset if it's a new day (sheet data is daily)
-        if state.get("date") != str(date.today()):
-            return {"date": str(date.today()), "seen": []}
-        return state
-    except (json.JSONDecodeError, KeyError):
-        return {"date": str(date.today()), "seen": []}
-
-
-def save_state(state):
-    """Persist seen alert keys to disk."""
-    os.makedirs(STATE_DIR, exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
-
-
-def filter_new_alerts(alerts):
-    """Return only alerts we haven't sent yet today, and update state."""
-    state = load_state()
-    seen = set(state["seen"])
-    new_alerts = []
-    for a in alerts:
-        key = _alert_key(a)
-        if key not in seen:
-            new_alerts.append(a)
-            seen.add(key)
-    state["seen"] = list(seen)
-    save_state(state)
-    return new_alerts
+STATE_FILE = "7day_alert_state.json"
 
 
 # ---------------------------------------------------------------------------
@@ -166,8 +43,7 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
     """
     Check one side (buying or selling) for threshold breaches.
 
-    Returns a list of alert dicts:
-      { side, row_num, ticker, expiry, field, value, threshold }
+    Returns a list of alert dicts.
     """
     alerts = []
 
@@ -179,23 +55,26 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
     xdate_idx = find_column_index(headers, "xdate")
     expiry_idx = find_column_index(headers, "expiry", "exp", "expiration")
     strike_idx = find_column_index(headers, "strike")
-    call_dollar_idx = find_column_index(headers, "calls $", "call$", "call $", "call dollar")
-    put_dollar_idx = find_column_index(headers, "puts $", "put$", "put $", "put dollar")
+    call_dollar_idx = find_column_index(headers, "calls $", "call$", "call $", "call dollar", "calls premiums")
+    put_dollar_idx = find_column_index(headers, "puts $", "put$", "put $", "put dollar", "puts premiums")
     call_qty_idx = find_column_index(headers, "calls qty", "call qty", "call quantity", "# calls", "call vol")
     put_qty_idx = find_column_index(headers, "puts qty", "put qty", "put quantity", "# puts", "put vol")
     insights_idx = find_column_index(headers, "order insights", "insights")
+    trade_price_idx = find_column_index(headers, "trade price", "trd $", "trade $")
+    target_price_idx = find_column_index(headers, "price target", "trgt", "target price")
 
     print(f"\n  [{side_label}] Column mapping:")
-    print(f"    Ticker:   col {ticker_idx}  ({safe_get(headers, ticker_idx, '?')})")
-    print(f"    Expiry:   col {expiry_idx} / xMonth={xmonth_idx} xDate={xdate_idx}")
-    print(f"    Strike:   col {strike_idx}  ({safe_get(headers, strike_idx, '?')})")
-    print(f"    Call$:    col {call_dollar_idx}  ({safe_get(headers, call_dollar_idx, '?')})")
-    print(f"    Put$:     col {put_dollar_idx}  ({safe_get(headers, put_dollar_idx, '?')})")
-    print(f"    Call Qty: col {call_qty_idx}  ({safe_get(headers, call_qty_idx, '?')})")
-    print(f"    Put Qty:  col {put_qty_idx}  ({safe_get(headers, put_qty_idx, '?')})")
+    print(f"    Ticker:       col {ticker_idx}  ({safe_get(headers, ticker_idx, '?')})")
+    print(f"    Expiry:       col {expiry_idx} / xMonth={xmonth_idx} xDate={xdate_idx}")
+    print(f"    Strike:       col {strike_idx}  ({safe_get(headers, strike_idx, '?')})")
+    print(f"    Call$:        col {call_dollar_idx}  ({safe_get(headers, call_dollar_idx, '?')})")
+    print(f"    Put$:         col {put_dollar_idx}  ({safe_get(headers, put_dollar_idx, '?')})")
+    print(f"    Call Qty:     col {call_qty_idx}  ({safe_get(headers, call_qty_idx, '?')})")
+    print(f"    Put Qty:      col {put_qty_idx}  ({safe_get(headers, put_qty_idx, '?')})")
+    print(f"    Trade Price:  col {trade_price_idx}  ({safe_get(headers, trade_price_idx, '?')})")
+    print(f"    Target Price: col {target_price_idx}  ({safe_get(headers, target_price_idx, '?')})")
 
     for row_offset, row in enumerate(data_rows):
-        # Sheet row number (1-indexed, accounting for header at row 4, data starts row 5)
         sheet_row = row_offset + 5
         row_date = safe_get(row, date_idx, "")
         row_time = safe_get(row, time_idx, "")
@@ -210,6 +89,8 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
         strike = safe_get(row, strike_idx, "")
         label = f"{ticker} {expiry} {strike}".strip()
         insights = safe_get(row, insights_idx, "")
+        trade_price = safe_get(row, trade_price_idx, "")
+        target_price = safe_get(row, target_price_idx, "")
 
         # Parse all four values for this row
         call_dollar_val = parse_dollar(safe_get(row, call_dollar_idx)) if call_dollar_idx is not None else 0.0
@@ -221,6 +102,7 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
         base = {
             "side": side_label, "row": sheet_row, "label": label,
             "date": row_date, "time": row_time, "insights": insights,
+            "trade_price": trade_price, "target_price": target_price,
             "call_dollar": call_dollar_val, "put_dollar": put_dollar_val,
             "call_qty": call_qty_val, "put_qty": put_qty_val,
         }
@@ -234,22 +116,6 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
             alerts.append({**base, "field": "Put", "value": 0, "threshold": 0})
 
     return alerts
-
-
-def format_number(val):
-    """Format a number for display ($1.23M or 1,234)."""
-    if val >= 1_000_000:
-        return f"${val/1_000_000:,.2f}M"
-    elif val >= 1_000:
-        return f"${val/1_000:,.1f}K" if val > 10_000 else f"${val:,.0f}"
-    return f"${val:,.0f}"
-
-
-def format_qty(val):
-    """Format quantity for display."""
-    if val >= 1_000_000:
-        return f"{val/1_000_000:,.2f}M"
-    return f"{val:,.0f}"
 
 
 def build_alert_message(alerts):
@@ -271,6 +137,16 @@ def build_alert_message(alerts):
         when = f"{a.get('date', '')} {a.get('time', '')}".strip()
         when_line = f"  {when}\n" if when else ""
 
+        # Trade Price and Target Price
+        trade_price = a.get("trade_price", "")
+        target_price = a.get("target_price", "")
+        price_parts = []
+        if trade_price:
+            price_parts.append(f"Trade: {trade_price}")
+        if target_price:
+            price_parts.append(f"Target: {target_price}")
+        price_line = f"  {' | '.join(price_parts)}\n" if price_parts else ""
+
         # Order Insights
         insights = a.get("insights", "")
         insights_line = f"  Insight: <i>{insights}</i>\n" if insights else ""
@@ -278,6 +154,7 @@ def build_alert_message(alerts):
         lines.append(
             f"{when_line}"
             f"  <b>{a['label']}</b> ({a['side']})\n"
+            f"{price_line}"
             f"  {side_type} Qty: <b>{format_qty(qty_val)}</b>  |  "
             f"{side_type}$: <b>{format_number(dollar_val)}</b>\n"
             f"{insights_line}"
@@ -314,7 +191,6 @@ def main():
     sheet_cfg = config["7Day"]
 
     # --- Read BUYING side (header + data) ---
-    # Read from header_row to get headers, then data starts at header_row+1
     header_row = sheet_cfg["header_row"]  # 4
     buying_range_col = sheet_cfg["range_buying"].split(":")[1]  # "O"
     buying_start_col = sheet_cfg["range_buying"].split(":")[0].rstrip("0123456789")  # "A"
@@ -371,7 +247,7 @@ def main():
     print(f"\nTotal alerts matching thresholds: {len(all_alerts)}")
 
     # Deduplicate: only send NEW alerts (not seen in previous runs today)
-    new_alerts = filter_new_alerts(all_alerts)
+    new_alerts = filter_new_alerts(all_alerts, STATE_FILE)
 
     if not new_alerts:
         print("No NEW alerts since last run. All already notified.")

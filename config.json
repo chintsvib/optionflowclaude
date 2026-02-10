@@ -13,6 +13,18 @@
     "range_buying": "A5:O",
     "range_selling": "R5:AE"
   },
+  "Floor_SPX_0DTE": {
+    "sheet_url": "https://docs.google.com/spreadsheets/d/1A1McRPl8lMTe4WtNfYNTMlvMrGuMlPeVFgGYcSSZvYs/edit?gid=2032701172#gid=2032701172",
+    "sheet_name": "Insightful!",
+    "header_row": 3,
+    "range": "A4:K29"
+  },
+  "Floor_All": {
+    "sheet_url": "https://docs.google.com/spreadsheets/d/1A1McRPl8lMTe4WtNfYNTMlvMrGuMlPeVFgGYcSSZvYs/edit?gid=2032701172#gid=2032701172",
+    "sheet_name": "Insightful!",
+    "header_row": 3,
+    "range": "AO4:AY29"
+  },
   "date_filter": {
     "days_back": 15,
     "comment": "Only include orders from the past N days"
