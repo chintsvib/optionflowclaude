@@ -77,9 +77,17 @@ def main():
     print("\nInitializing allDay database...")
     init_db()
 
+    # First run after deploy: seed dedup state without sending alerts
+    # (Railway's ephemeral filesystem wipes state files on each deploy)
+    first_run = True
+
     while True:
         if is_market_hours():
-            print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] Running monitors...")
+            if first_run:
+                print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] First run — seeding dedup state (no alerts)...")
+                sys.argv = [sys.argv[0], "--dry-run"]
+            else:
+                print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] Running monitors...")
 
             # Load allDay data once per day
             if not is_db_loaded_today():
@@ -110,6 +118,11 @@ def main():
             # except Exception as e:
             #     print(f"Multi-source check error (will retry next interval): {e}")
             #     traceback.print_exc()
+
+            if first_run:
+                sys.argv = [sys.argv[0]]
+                first_run = False
+                print("Dedup state seeded. Next run will send real alerts.")
 
             print(f"Sleeping {INTERVAL_SECONDS // 60} minutes...")
             time.sleep(INTERVAL_SECONDS)
