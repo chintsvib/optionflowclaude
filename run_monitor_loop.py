@@ -104,12 +104,12 @@ def main():
                 print(f"Floor monitor error (will retry next interval): {e}")
                 traceback.print_exc()
 
-            # Multi-source confirmation + opposite order detection
-            try:
-                run_multi_source_check()
-            except Exception as e:
-                print(f"Multi-source check error (will retry next interval): {e}")
-                traceback.print_exc()
+            # Multi-source confirmation (disabled — needs analysis tuning)
+            # try:
+            #     run_multi_source_check()
+            # except Exception as e:
+            #     print(f"Multi-source check error (will retry next interval): {e}")
+            #     traceback.print_exc()
 
             print(f"Sleeping {INTERVAL_SECONDS // 60} minutes...")
             time.sleep(INTERVAL_SECONDS)
