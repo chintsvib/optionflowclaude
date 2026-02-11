@@ -19,6 +19,24 @@
     "header_row": 3,
     "range": "A4:K29"
   },
+  "Floor_SPX_DTEPlus": {
+    "sheet_url": "https://docs.google.com/spreadsheets/d/1A1McRPl8lMTe4WtNfYNTMlvMrGuMlPeVFgGYcSSZvYs/edit?gid=2032701172#gid=2032701172",
+    "sheet_name": "Insightful!",
+    "header_row": 3,
+    "range": "M4:Y29"
+  },
+  "Floor_NDX_0DTE": {
+    "sheet_url": "https://docs.google.com/spreadsheets/d/1A1McRPl8lMTe4WtNfYNTMlvMrGuMlPeVFgGYcSSZvYs/edit?gid=2032701172#gid=2032701172",
+    "sheet_name": "Insightful!",
+    "header_row": 31,
+    "range": "A32:K51"
+  },
+  "Floor_NDX_DTEPlus": {
+    "sheet_url": "https://docs.google.com/spreadsheets/d/1A1McRPl8lMTe4WtNfYNTMlvMrGuMlPeVFgGYcSSZvYs/edit?gid=2032701172#gid=2032701172",
+    "sheet_name": "Insightful!",
+    "header_row": 31,
+    "range": "M32:Y51"
+  },
   "Floor_All": {
     "sheet_url": "https://docs.google.com/spreadsheets/d/1A1McRPl8lMTe4WtNfYNTMlvMrGuMlPeVFgGYcSSZvYs/edit?gid=2032701172#gid=2032701172",
     "sheet_name": "Insightful!",
