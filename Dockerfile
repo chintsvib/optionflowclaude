@@ -17,6 +17,8 @@ COPY tools/send_telegram.py tools/
 COPY tools/monitor_utils.py tools/
 COPY tools/monitor_7day_alerts.py tools/
 COPY tools/monitor_floor_alerts.py tools/
+COPY tools/allday_db.py tools/
+COPY tools/multi_source_check.py tools/
 COPY tools/__init__.py tools/
 
 CMD ["python", "run_monitor_loop.py"]

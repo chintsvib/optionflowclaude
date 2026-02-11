@@ -12,9 +12,13 @@ import traceback
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-# Import both monitors' main functions
+# Import monitors
 from tools.monitor_7day_alerts import main as run_monitor
 from tools.monitor_floor_alerts import main as run_floor_monitor
+
+# Import cross-reference engine
+from tools.allday_db import init_db, load_allday_to_db, is_db_loaded_today
+from tools.multi_source_check import main as run_multi_source_check
 
 ET = ZoneInfo("America/New_York")
 INTERVAL_SECONDS = 60  # 1 minute
@@ -61,7 +65,7 @@ def seconds_until_next_market_open():
 
 def main():
     print("=" * 60)
-    print("7DTE OPTION FLOW MONITOR - LOOP MODE")
+    print("OPTION FLOW MONITOR - LOOP MODE")
     print(f"Interval: {INTERVAL_SECONDS // 60} minutes")
     print(f"Market hours: {MARKET_OPEN_HOUR}:{MARKET_OPEN_MIN:02d} - {MARKET_CLOSE_HOUR}:{MARKET_CLOSE_MIN:02d} ET")
     print("=" * 60)
@@ -69,9 +73,22 @@ def main():
     # Patch sys.argv so the monitor's argparse doesn't see loop args
     sys.argv = [sys.argv[0]]
 
+    # Initialize allDay SQLite database
+    print("\nInitializing allDay database...")
+    init_db()
+
     while True:
         if is_market_hours():
             print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] Running monitors...")
+
+            # Load allDay data once per day
+            if not is_db_loaded_today():
+                try:
+                    print("Loading allDay data into SQLite (once per day)...")
+                    load_allday_to_db()
+                except Exception as e:
+                    print(f"allDay DB load error: {e}")
+                    traceback.print_exc()
 
             # 7DTE monitor
             try:
@@ -85,6 +102,13 @@ def main():
                 run_floor_monitor()
             except Exception as e:
                 print(f"Floor monitor error (will retry next interval): {e}")
+                traceback.print_exc()
+
+            # Multi-source confirmation + opposite order detection
+            try:
+                run_multi_source_check()
+            except Exception as e:
+                print(f"Multi-source check error (will retry next interval): {e}")
                 traceback.print_exc()
 
             print(f"Sleeping {INTERVAL_SECONDS // 60} minutes...")
