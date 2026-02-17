@@ -112,12 +112,12 @@ def main():
                 print(f"Floor monitor error (will retry next interval): {e}")
                 traceback.print_exc()
 
-            # Multi-source confirmation (disabled — needs analysis tuning)
-            # try:
-            #     run_multi_source_check()
-            # except Exception as e:
-            #     print(f"Multi-source check error (will retry next interval): {e}")
-            #     traceback.print_exc()
+            # Multi-source confirmation
+            try:
+                run_multi_source_check()
+            except Exception as e:
+                print(f"Multi-source check error (will retry next interval): {e}")
+                traceback.print_exc()
 
             if first_run:
                 sys.argv = [sys.argv[0]]

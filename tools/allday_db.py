@@ -244,23 +244,25 @@ def load_allday_to_db(config=None):
 
 def query_net_flow(ticker):
     """
-    Get historical net flow for a ticker.
-    Returns dict with net_call_dollar, net_put_dollar, net_call_qty, net_put_qty,
-    buy_count, sell_count.
+    Get historical net flow for a ticker using Order Insights to categorize.
+    Returns dict with bullish_dollar, bearish_dollar, bullish_count, bearish_count,
+    direction.
     """
     conn = get_connection()
     row = conn.execute("""
         SELECT
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN call_dollar ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN call_dollar ELSE 0 END), 0) AS net_call_dollar,
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN put_dollar ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN put_dollar ELSE 0 END), 0) AS net_put_dollar,
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN call_qty ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN call_qty ELSE 0 END), 0) AS net_call_qty,
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN put_qty ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN put_qty ELSE 0 END), 0) AS net_put_qty,
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN 1 ELSE 0 END), 0) AS buy_count,
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN 1 ELSE 0 END), 0) AS sell_count
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bullish%'
+                THEN call_dollar + put_dollar ELSE 0 END), 0) AS bullish_dollar,
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bearish%'
+                THEN call_dollar + put_dollar ELSE 0 END), 0) AS bearish_dollar,
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bullish%'
+                THEN call_qty + put_qty ELSE 0 END), 0) AS bullish_qty,
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bearish%'
+                THEN call_qty + put_qty ELSE 0 END), 0) AS bearish_qty,
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bullish%'
+                THEN 1 ELSE 0 END), 0) AS bullish_count,
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bearish%'
+                THEN 1 ELSE 0 END), 0) AS bearish_count
         FROM allday_orders
         WHERE ticker = ?
     """, (ticker,)).fetchone()
@@ -269,45 +271,58 @@ def query_net_flow(ticker):
     if row is None:
         return None
 
+    bullish = row["bullish_dollar"]
+    bearish = row["bearish_dollar"]
+    if bullish > bearish:
+        direction = "BULLISH"
+    elif bearish > bullish:
+        direction = "BEARISH"
+    else:
+        direction = "NEUTRAL"
+
     return {
-        "net_call_dollar": row["net_call_dollar"],
-        "net_put_dollar": row["net_put_dollar"],
-        "net_call_qty": row["net_call_qty"],
-        "net_put_qty": row["net_put_qty"],
-        "buy_count": row["buy_count"],
-        "sell_count": row["sell_count"],
+        "bullish_dollar": bullish,
+        "bearish_dollar": bearish,
+        "bullish_qty": row["bullish_qty"],
+        "bearish_qty": row["bearish_qty"],
+        "bullish_count": row["bullish_count"],
+        "bearish_count": row["bearish_count"],
+        "direction": direction,
     }
 
 
 def query_net_flow_by_expiry(ticker):
     """
     Get historical net flow for a ticker grouped by expiry (xmonth/xdate/xyear).
+    Uses Order Insights to categorize bullish vs bearish.
     Returns list of dicts sorted by net dollar flow (largest first).
-    Each dict: {xmonth, xdate, xyear, expiry_label, net_call_dollar, net_put_dollar,
-                net_call_qty, net_put_qty, buy_count, sell_count, direction}
+    Each dict: {xmonth, xdate, xyear, expiry_label, bullish_dollar, bearish_dollar,
+                bullish_qty, bearish_qty, bullish_count, bearish_count, direction}
     """
     conn = get_connection()
     rows = conn.execute("""
         SELECT
             xmonth, xdate, xyear,
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN call_dollar ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN call_dollar ELSE 0 END), 0) AS net_call_dollar,
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN put_dollar ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN put_dollar ELSE 0 END), 0) AS net_put_dollar,
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN call_qty ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN call_qty ELSE 0 END), 0) AS net_call_qty,
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN put_qty ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN put_qty ELSE 0 END), 0) AS net_put_qty,
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN 1 ELSE 0 END), 0) AS buy_count,
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN 1 ELSE 0 END), 0) AS sell_count
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bullish%'
+                THEN call_dollar + put_dollar ELSE 0 END), 0) AS bullish_dollar,
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bearish%'
+                THEN call_dollar + put_dollar ELSE 0 END), 0) AS bearish_dollar,
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bullish%'
+                THEN call_qty + put_qty ELSE 0 END), 0) AS bullish_qty,
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bearish%'
+                THEN call_qty + put_qty ELSE 0 END), 0) AS bearish_qty,
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bullish%'
+                THEN 1 ELSE 0 END), 0) AS bullish_count,
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bearish%'
+                THEN 1 ELSE 0 END), 0) AS bearish_count
         FROM allday_orders
         WHERE ticker = ? AND xmonth != '' AND xdate != ''
         GROUP BY xmonth, xdate, xyear
         ORDER BY ABS(
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN call_dollar ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN call_dollar ELSE 0 END), 0) +
-            COALESCE(SUM(CASE WHEN side='BUYING' THEN put_dollar ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN side='SELLING' THEN put_dollar ELSE 0 END), 0)
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bullish%'
+                THEN call_dollar + put_dollar ELSE 0 END), 0) -
+            COALESCE(SUM(CASE WHEN LOWER(insights) LIKE '%bearish%'
+                THEN call_dollar + put_dollar ELSE 0 END), 0)
         ) DESC
     """, (ticker,)).fetchall()
     conn.close()
@@ -319,11 +334,11 @@ def query_net_flow_by_expiry(ticker):
         xy = r["xyear"]
         expiry_label = f"{xm}/{xd}" + (f"/{xy}" if xy else "")
 
-        net_call = r["net_call_dollar"]
-        net_put = r["net_put_dollar"]
-        if net_call > net_put:
+        bullish = r["bullish_dollar"]
+        bearish = r["bearish_dollar"]
+        if bullish > bearish:
             direction = "BULLISH"
-        elif net_put > net_call:
+        elif bearish > bullish:
             direction = "BEARISH"
         else:
             direction = "NEUTRAL"
@@ -333,12 +348,12 @@ def query_net_flow_by_expiry(ticker):
             "xdate": xd,
             "xyear": xy,
             "expiry_label": expiry_label,
-            "net_call_dollar": net_call,
-            "net_put_dollar": net_put,
-            "net_call_qty": r["net_call_qty"],
-            "net_put_qty": r["net_put_qty"],
-            "buy_count": r["buy_count"],
-            "sell_count": r["sell_count"],
+            "bullish_dollar": bullish,
+            "bearish_dollar": bearish,
+            "bullish_qty": r["bullish_qty"],
+            "bearish_qty": r["bearish_qty"],
+            "bullish_count": r["bullish_count"],
+            "bearish_count": r["bearish_count"],
             "direction": direction,
         })
 

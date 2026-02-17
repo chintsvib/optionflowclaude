@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OptionFlow Terminal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: '#0f1117',
+            surface: '#1a1d29',
+            'surface-alt': '#252836',
+            border: '#2d3148',
+            bull: '#22c55e',
+            bear: '#ef4444',
+            accent: '#3b82f6',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0f1117; font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; }
+    .autocomplete-dropdown { max-height: 240px; overflow-y: auto; }
+    .autocomplete-dropdown div:hover { background: #252836; }
+    .spinner { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .skeleton { animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 0.8; } }
+    table { border-collapse: separate; border-spacing: 0; }
+    th { position: sticky; top: 0; z-index: 1; }
+  </style>
+</head>
+<body class="text-gray-200 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-surface border-b border-border px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <h1 class="text-xl font-bold text-white tracking-tight">OptionFlow</h1>
+      <span class="text-xs text-gray-500 mt-1">Terminal</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <div id="db-status" class="text-xs text-gray-500"></div>
+      <button id="refresh-btn" onclick="refreshDB()"
+        class="px-4 py-2 bg-accent/20 text-accent border border-accent/30 rounded-lg text-sm font-medium hover:bg-accent/30 transition flex items-center gap-2">
+        <svg id="refresh-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Refresh DB
+      </button>
+    </div>
+  </header>
+
+  <!-- Refresh status bar -->
+  <div id="refresh-bar" class="hidden bg-accent/10 border-b border-accent/20 px-6 py-2 text-sm text-accent flex items-center gap-2">
+    <svg class="w-4 h-4 spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+    </svg>
+    <span id="refresh-text">Refreshing database from Google Sheets...</span>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="bg-surface border-b border-border px-6 py-4">
+    <div class="flex flex-wrap items-end gap-3">
+      <!-- Ticker with autocomplete -->
+      <div class="relative">
+        <label class="block text-xs text-gray-500 mb-1">Ticker</label>
+        <input id="ticker-input" type="text" placeholder="NVDA"
+          class="w-36 px-3 py-2 bg-bg border border-border rounded-lg text-white text-sm focus:border-accent focus:outline-none uppercase"
+          oninput="onTickerInput(this.value)" onkeydown="onTickerKeydown(event)">
+        <div id="autocomplete" class="autocomplete-dropdown hidden absolute z-10 w-full mt-1 bg-surface border border-border rounded-lg shadow-xl"></div>
+      </div>
+
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Days</label>
+        <select id="days-select" class="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-white focus:border-accent focus:outline-none">
+          <option value="0">All</option>
+          <option value="1">1</option>
+          <option value="3">3</option>
+          <option value="7">7</option>
+          <option value="14">14</option>
+          <option value="30">30</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Source</label>
+        <select id="source-select" class="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-white focus:border-accent focus:outline-none">
+          <option value="">All</option>
+          <option value="allDay">allDay</option>
+          <option value="7Day">7Day</option>
+          <option value="Floor_SPX_0DTE">Floor SPX 0DTE</option>
+          <option value="Floor_SPX_DTEPlus">Floor SPX DTE+</option>
+          <option value="Floor_NDX_0DTE">Floor NDX 0DTE</option>
+          <option value="Floor_NDX_DTEPlus">Floor NDX DTE+</option>
+          <option value="Floor_All">Floor All</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Side</label>
+        <select id="side-select" class="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-white focus:border-accent focus:outline-none">
+          <option value="both">Both</option>
+          <option value="buying">Buying</option>
+          <option value="selling">Selling</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Sort</label>
+        <select id="sort-select" class="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-white focus:border-accent focus:outline-none">
+          <option value="dollar">Dollar</option>
+          <option value="qty">Quantity</option>
+          <option value="expiry">Expiry</option>
+        </select>
+      </div>
+
+      <button onclick="queryFlow()"
+        class="px-6 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition">
+        Search
+      </button>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <main class="px-6 py-6 max-w-[1400px] mx-auto">
+
+    <!-- Empty state -->
+    <div id="empty-state" class="text-center py-20">
+      <div class="text-gray-500 text-lg mb-2">Enter a ticker and click Search</div>
+      <div class="text-gray-600 text-sm">Or click Refresh DB to load data from Google Sheets</div>
+    </div>
+
+    <!-- Loading skeleton -->
+    <div id="loading-state" class="hidden space-y-4">
+      <div class="h-32 bg-surface rounded-xl skeleton"></div>
+      <div class="h-8 bg-surface rounded-lg skeleton w-1/3"></div>
+      <div class="h-64 bg-surface rounded-xl skeleton"></div>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="hidden space-y-6">
+
+      <!-- Summary card -->
+      <div id="summary-card" class="bg-surface rounded-xl border border-border p-6"></div>
+
+      <!-- Tabs -->
+      <div class="flex gap-1 border-b border-border">
+        <button onclick="switchTab('by_expiry')" data-tab="by_expiry"
+          class="tab-btn px-4 py-2 text-sm font-medium border-b-2 transition">By Expiry</button>
+        <button onclick="switchTab('by_source')" data-tab="by_source"
+          class="tab-btn px-4 py-2 text-sm font-medium border-b-2 transition">By Source</button>
+        <button onclick="switchTab('orders')" data-tab="orders"
+          class="tab-btn px-4 py-2 text-sm font-medium border-b-2 transition">All Orders</button>
+      </div>
+
+      <!-- Table area -->
+      <div id="table-area" class="overflow-x-auto"></div>
+    </div>
+  </main>
+
+<script>
+// =========================================================================
+// State
+// =========================================================================
+let state = {
+  activeTab: 'by_expiry',
+  lastData: null,
+  refreshPollTimer: null,
+  autocompletTimer: null,
+};
+
+// =========================================================================
+// Formatters
+// =========================================================================
+function fmtDollar(val) {
+  if (val == null) return '$0';
+  const abs = Math.abs(val);
+  const sign = val < 0 ? '-' : '';
+  if (abs >= 1e9) return sign + '$' + (abs/1e9).toFixed(2) + 'B';
+  if (abs >= 1e6) return sign + '$' + (abs/1e6).toFixed(2) + 'M';
+  if (abs >= 1e3) return sign + '$' + (abs/1e3).toFixed(1) + 'K';
+  return sign + '$' + abs.toFixed(0);
+}
+
+function fmtQty(val) {
+  if (!val) return '0';
+  return Math.round(val).toLocaleString('en-US');
+}
+
+function flowBar(bull, bear, width = 'w-24', alpha = 1.0) {
+  const total = bull + bear;
+  if (total === 0) return `<div class="h-3 ${width} rounded-full bg-gray-700"></div>`;
+  const bullPct = ((bull / total) * 100).toFixed(1);
+  const a = alpha.toFixed(2);
+  return `<div class="h-3 ${width} rounded-full overflow-hidden flex">
+    <div style="width:${bullPct}%;background:rgba(${BULL_RGB},${a})"></div>
+    <div style="width:${100 - bullPct}%;background:rgba(${BEAR_RGB},${a})"></div>
+  </div>`;
+}
+
+function dirBadge(dir) {
+  if (dir === 'BULLISH') return '<span class="px-2 py-0.5 rounded text-xs font-bold bg-bull/20 text-bull">BULLISH</span>';
+  if (dir === 'BEARISH') return '<span class="px-2 py-0.5 rounded text-xs font-bold bg-bear/20 text-bear">BEARISH</span>';
+  return '<span class="px-2 py-0.5 rounded text-xs font-bold bg-gray-700 text-gray-400">NEUTRAL</span>';
+}
+
+function dirBadgeShort(dir) {
+  if (dir === 'BULLISH') return '<span class="px-1.5 py-0.5 rounded text-xs font-bold bg-bull/20 text-bull">BULL</span>';
+  if (dir === 'BEARISH') return '<span class="px-1.5 py-0.5 rounded text-xs font-bold bg-bear/20 text-bear">BEAR</span>';
+  return '<span class="px-1.5 py-0.5 rounded text-xs text-gray-500">-</span>';
+}
+
+// Heat map — color intensity scales with % of max flow
+const BULL_RGB = '34,197,94';
+const BEAR_RGB = '239,68,68';
+
+function heatAlpha(val, maxVal) {
+  if (!maxVal || !val) return 0.15;
+  return 0.15 + (val / maxVal) * 0.85;
+}
+
+function heatColor(val, maxVal, rgb) {
+  return `rgba(${rgb},${heatAlpha(val, maxVal).toFixed(2)})`;
+}
+
+// =========================================================================
+// DB Status
+// =========================================================================
+async function loadStats() {
+  try {
+    const res = await fetch('/api/db/stats');
+    const data = await res.json();
+    const el = document.getElementById('db-status');
+    if (data.total_entries > 0) {
+      el.innerHTML = `<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-bull/10 text-bull border border-bull/20">
+        <span class="w-1.5 h-1.5 rounded-full bg-bull"></span>
+        ${data.total_entries.toLocaleString()} entries &middot; ${data.distinct_tickers} tickers &middot; ${data.loaded_date || 'unknown'}
+      </span>`;
+    } else {
+      el.innerHTML = `<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-700 text-gray-400">
+        <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>No data
+      </span>`;
+    }
+  } catch (e) { console.error('Failed to load stats:', e); }
+}
+
+// =========================================================================
+// Refresh
+// =========================================================================
+async function refreshDB() {
+  const btn = document.getElementById('refresh-btn');
+  const icon = document.getElementById('refresh-icon');
+  const bar = document.getElementById('refresh-bar');
+
+  btn.disabled = true;
+  icon.classList.add('spinner');
+  bar.classList.remove('hidden');
+
+  try {
+    const res = await fetch('/api/refresh', { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'already_running') {
+      document.getElementById('refresh-text').textContent = 'Refresh already in progress...';
+    }
+    pollRefresh();
+  } catch (e) {
+    bar.classList.add('hidden');
+    btn.disabled = false;
+    icon.classList.remove('spinner');
+  }
+}
+
+function pollRefresh() {
+  if (state.refreshPollTimer) clearInterval(state.refreshPollTimer);
+  state.refreshPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch('/api/refresh/status');
+      const data = await res.json();
+      if (!data.running) {
+        clearInterval(state.refreshPollTimer);
+        const bar = document.getElementById('refresh-bar');
+        const btn = document.getElementById('refresh-btn');
+        const icon = document.getElementById('refresh-icon');
+
+        if (data.last_error) {
+          document.getElementById('refresh-text').textContent = 'Error: ' + data.last_error;
+          bar.classList.remove('bg-accent/10', 'border-accent/20', 'text-accent');
+          bar.classList.add('bg-bear/10', 'border-bear/20', 'text-bear');
+        } else if (data.last_result) {
+          document.getElementById('refresh-text').textContent =
+            `Loaded ${data.last_result.entries_loaded.toLocaleString()} entries`;
+          bar.classList.remove('bg-accent/10', 'border-accent/20', 'text-accent');
+          bar.classList.add('bg-bull/10', 'border-bull/20', 'text-bull');
+        }
+
+        btn.disabled = false;
+        icon.classList.remove('spinner');
+        loadStats();
+        setTimeout(() => {
+          bar.classList.add('hidden');
+          bar.className = 'hidden bg-accent/10 border-b border-accent/20 px-6 py-2 text-sm text-accent flex items-center gap-2';
+        }, 4000);
+      }
+    } catch (e) { /* keep polling */ }
+  }, 2000);
+}
+
+// =========================================================================
+// Autocomplete
+// =========================================================================
+function onTickerInput(val) {
+  clearTimeout(state.autocompletTimer);
+  if (val.length < 1) {
+    document.getElementById('autocomplete').classList.add('hidden');
+    return;
+  }
+  state.autocompletTimer = setTimeout(() => searchTickers(val), 300);
+}
+
+async function searchTickers(q) {
+  try {
+    const res = await fetch(`/api/tickers?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const el = document.getElementById('autocomplete');
+    if (data.tickers.length === 0) { el.classList.add('hidden'); return; }
+
+    el.innerHTML = data.tickers.map(t =>
+      `<div class="px-3 py-2 text-sm cursor-pointer text-gray-300 hover:text-white" onclick="selectTicker('${t}')">${t}</div>`
+    ).join('');
+    el.classList.remove('hidden');
+  } catch (e) { /* ignore */ }
+}
+
+function selectTicker(t) {
+  document.getElementById('ticker-input').value = t;
+  document.getElementById('autocomplete').classList.add('hidden');
+}
+
+function onTickerKeydown(e) {
+  if (e.key === 'Enter') {
+    document.getElementById('autocomplete').classList.add('hidden');
+    queryFlow();
+  }
+  if (e.key === 'Escape') {
+    document.getElementById('autocomplete').classList.add('hidden');
+  }
+}
+
+// Close autocomplete on outside click
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#ticker-input') && !e.target.closest('#autocomplete')) {
+    document.getElementById('autocomplete').classList.add('hidden');
+  }
+});
+
+// =========================================================================
+// Query
+// =========================================================================
+async function queryFlow() {
+  const ticker = document.getElementById('ticker-input').value.trim();
+  if (!ticker) return;
+
+  document.getElementById('empty-state').classList.add('hidden');
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('loading-state').classList.remove('hidden');
+
+  const params = new URLSearchParams({
+    ticker,
+    days: document.getElementById('days-select').value,
+    sort: document.getElementById('sort-select').value,
+    side: document.getElementById('side-select').value,
+    view: state.activeTab,
+  });
+  const source = document.getElementById('source-select').value;
+  if (source) params.set('source', source);
+
+  try {
+    const res = await fetch(`/api/flow?${params}`);
+    const data = await res.json();
+    state.lastData = data;
+
+    document.getElementById('loading-state').classList.add('hidden');
+
+    if (data.filtered_count === 0) {
+      document.getElementById('empty-state').classList.remove('hidden');
+      document.getElementById('empty-state').innerHTML =
+        `<div class="text-gray-500 text-lg mb-2">No entries found for <span class="text-white font-bold">${data.ticker}</span></div>
+         <div class="text-gray-600 text-sm">Try adjusting your filters</div>`;
+      return;
+    }
+
+    document.getElementById('results').classList.remove('hidden');
+    renderSummary(data);
+    updateTabs();
+    renderTable(data);
+  } catch (e) {
+    document.getElementById('loading-state').classList.add('hidden');
+    document.getElementById('empty-state').classList.remove('hidden');
+    document.getElementById('empty-state').innerHTML =
+      `<div class="text-bear text-lg">Error fetching data</div><div class="text-gray-600 text-sm">${e.message}</div>`;
+  }
+}
+
+// =========================================================================
+// Render: Summary
+// =========================================================================
+function renderSummary(data) {
+  const s = data.summary;
+  const el = document.getElementById('summary-card');
+  const netColor = s.direction === 'BULLISH' ? 'text-bull' : (s.direction === 'BEARISH' ? 'text-bear' : 'text-gray-400');
+
+  el.innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl font-bold text-white">${data.ticker}</span>
+        <span class="text-sm text-gray-500">${data.filtered_count.toLocaleString()} orders</span>
+        ${data.filtered_count !== data.total_count ? `<span class="text-xs text-gray-600">(${data.total_count.toLocaleString()} total)</span>` : ''}
+      </div>
+      ${dirBadge(s.direction)}
+    </div>
+    <div class="grid grid-cols-3 gap-6 mb-4">
+      <div>
+        <div class="text-xs text-gray-500 mb-1">Bullish</div>
+        <div class="text-xl font-bold text-bull">${fmtDollar(s.bullish_dollar)}</div>
+        <div class="text-xs text-gray-500">${s.bullish_count} orders &middot; ${fmtQty(s.bullish_qty)} qty</div>
+      </div>
+      <div>
+        <div class="text-xs text-gray-500 mb-1">Bearish</div>
+        <div class="text-xl font-bold text-bear">${fmtDollar(s.bearish_dollar)}</div>
+        <div class="text-xs text-gray-500">${s.bearish_count} orders &middot; ${fmtQty(s.bearish_qty)} qty</div>
+      </div>
+      <div>
+        <div class="text-xs text-gray-500 mb-1">Net</div>
+        <div class="text-xl font-bold ${netColor}">${fmtDollar(s.net_dollar)}</div>
+        <div class="text-xs text-gray-500">Sources: ${s.sources.join(', ')}</div>
+      </div>
+    </div>
+    ${flowBar(s.bullish_dollar, s.bearish_dollar, 'w-full')}
+  `;
+}
+
+// =========================================================================
+// Tabs
+// =========================================================================
+function updateTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const tab = btn.dataset.tab;
+    if (tab === state.activeTab) {
+      btn.className = 'tab-btn px-4 py-2 text-sm font-medium border-b-2 border-accent text-white transition';
+    } else {
+      btn.className = 'tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-300 transition';
+    }
+  });
+}
+
+function switchTab(tab) {
+  state.activeTab = tab;
+  updateTabs();
+  queryFlow();
+}
+
+// =========================================================================
+// Render: Tables
+// =========================================================================
+function renderTable(data) {
+  const el = document.getElementById('table-area');
+
+  if (state.activeTab === 'by_expiry' && data.expiries) {
+    el.innerHTML = renderByExpiry(data.expiries);
+  } else if (state.activeTab === 'by_source' && data.sources_breakdown) {
+    el.innerHTML = renderBySource(data.sources_breakdown);
+  } else if (state.activeTab === 'orders' && data.orders) {
+    el.innerHTML = renderOrders(data.orders, data.filtered_count);
+  } else {
+    el.innerHTML = '<div class="text-gray-500 py-8 text-center">No data for this view</div>';
+  }
+}
+
+function renderByExpiry(expiries) {
+  let totals = { bullish_dollar: 0, bearish_dollar: 0, bullish_qty: 0, bearish_qty: 0, bullish_count: 0, bearish_count: 0 };
+  expiries.forEach(e => {
+    totals.bullish_dollar += e.bullish_dollar;
+    totals.bearish_dollar += e.bearish_dollar;
+    totals.bullish_qty += e.bullish_qty;
+    totals.bearish_qty += e.bearish_qty;
+    totals.bullish_count += e.bullish_count;
+    totals.bearish_count += e.bearish_count;
+  });
+  const totalDir = totals.bullish_dollar > totals.bearish_dollar ? 'BULLISH' : (totals.bearish_dollar > totals.bullish_dollar ? 'BEARISH' : 'NEUTRAL');
+  const maxDollar = Math.max(...expiries.map(e => e.bullish_dollar + e.bearish_dollar), 1);
+
+  const rows = expiries.map((e, i) => `
+    <tr class="${i % 2 ? 'bg-surface-alt' : 'bg-surface'}">
+      <td class="px-4 py-2 text-sm font-medium text-white">${e.expiry}</td>
+      <td class="px-4 py-2 text-sm text-right text-bull">${fmtDollar(e.bullish_dollar)}</td>
+      <td class="px-4 py-2 text-sm text-right text-bear">${fmtDollar(e.bearish_dollar)}</td>
+      <td class="px-4 py-2 text-sm text-right text-bull">${fmtQty(e.bullish_qty)}</td>
+      <td class="px-4 py-2 text-sm text-right text-bear">${fmtQty(e.bearish_qty)}</td>
+      <td class="px-4 py-2">${flowBar(e.bullish_dollar, e.bearish_dollar, 'w-24', heatAlpha(e.bullish_dollar + e.bearish_dollar, maxDollar))}</td>
+      <td class="px-4 py-2 text-center">${dirBadge(e.direction)}</td>
+      <td class="px-4 py-2 text-sm text-center text-gray-500">${e.bullish_count}/${e.bearish_count}</td>
+    </tr>
+  `).join('');
+
+  return `<table class="w-full">
+    <thead><tr class="bg-bg">
+      <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
+      <th class="px-4 py-3 text-right text-xs font-medium text-bull uppercase">Bullish$</th>
+      <th class="px-4 py-3 text-right text-xs font-medium text-bear uppercase">Bearish$</th>
+      <th class="px-4 py-3 text-right text-xs font-medium text-bull uppercase">Bull Qty</th>
+      <th class="px-4 py-3 text-right text-xs font-medium text-bear uppercase">Bear Qty</th>
+      <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Flow</th>
+      <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Dir</th>
+      <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">#B/#R</th>
+    </tr></thead>
+    <tbody>${rows}
+      <tr class="bg-bg border-t-2 border-border font-bold">
+        <td class="px-4 py-3 text-sm text-white">TOTAL</td>
+        <td class="px-4 py-3 text-sm text-right text-bull">${fmtDollar(totals.bullish_dollar)}</td>
+        <td class="px-4 py-3 text-sm text-right text-bear">${fmtDollar(totals.bearish_dollar)}</td>
+        <td class="px-4 py-3 text-sm text-right text-bull">${fmtQty(totals.bullish_qty)}</td>
+        <td class="px-4 py-3 text-sm text-right text-bear">${fmtQty(totals.bearish_qty)}</td>
+        <td class="px-4 py-3">${flowBar(totals.bullish_dollar, totals.bearish_dollar)}</td>
+        <td class="px-4 py-3 text-center">${dirBadge(totalDir)}</td>
+        <td class="px-4 py-3 text-sm text-center text-gray-500">${totals.bullish_count}/${totals.bearish_count}</td>
+      </tr>
+    </tbody>
+  </table>`;
+}
+
+function renderBySource(sources) {
+  let totals = { bullish_dollar: 0, bearish_dollar: 0, bullish_qty: 0, bearish_qty: 0, bullish_count: 0, bearish_count: 0 };
+  sources.forEach(e => {
+    totals.bullish_dollar += e.bullish_dollar;
+    totals.bearish_dollar += e.bearish_dollar;
+    totals.bullish_count += e.bullish_count;
+    totals.bearish_count += e.bearish_count;
+  });
+  const totalDir = totals.bullish_dollar > totals.bearish_dollar ? 'BULLISH' : (totals.bearish_dollar > totals.bullish_dollar ? 'BEARISH' : 'NEUTRAL');
+  const totalNet = totals.bullish_dollar - totals.bearish_dollar;
+  const maxDollar = Math.max(...sources.map(e => e.bullish_dollar + e.bearish_dollar), 1);
+
+  const rows = sources.map((e, i) => `
+    <tr class="${i % 2 ? 'bg-surface-alt' : 'bg-surface'}">
+      <td class="px-4 py-3 text-sm font-medium text-white">${e.source}</td>
+      <td class="px-4 py-3 text-sm text-right text-bull">${fmtDollar(e.bullish_dollar)}</td>
+      <td class="px-4 py-3 text-sm text-right text-bear">${fmtDollar(e.bearish_dollar)}</td>
+      <td class="px-4 py-3 text-sm text-right ${e.net_dollar >= 0 ? 'text-bull' : 'text-bear'}">${fmtDollar(e.net_dollar)}</td>
+      <td class="px-4 py-3">${flowBar(e.bullish_dollar, e.bearish_dollar, 'w-24', heatAlpha(e.bullish_dollar + e.bearish_dollar, maxDollar))}</td>
+      <td class="px-4 py-3 text-center">${dirBadge(e.direction)}</td>
+      <td class="px-4 py-3 text-sm text-center text-gray-500">${e.bullish_count}/${e.bearish_count}</td>
+    </tr>
+  `).join('');
+
+  return `<table class="w-full">
+    <thead><tr class="bg-bg">
+      <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+      <th class="px-4 py-3 text-right text-xs font-medium text-bull uppercase">Bullish$</th>
+      <th class="px-4 py-3 text-right text-xs font-medium text-bear uppercase">Bearish$</th>
+      <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Net$</th>
+      <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Flow</th>
+      <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Dir</th>
+      <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">#B/#R</th>
+    </tr></thead>
+    <tbody>${rows}
+      <tr class="bg-bg border-t-2 border-border font-bold">
+        <td class="px-4 py-3 text-sm text-white">TOTAL</td>
+        <td class="px-4 py-3 text-sm text-right text-bull">${fmtDollar(totals.bullish_dollar)}</td>
+        <td class="px-4 py-3 text-sm text-right text-bear">${fmtDollar(totals.bearish_dollar)}</td>
+        <td class="px-4 py-3 text-sm text-right ${totalNet >= 0 ? 'text-bull' : 'text-bear'}">${fmtDollar(totalNet)}</td>
+        <td class="px-4 py-3">${flowBar(totals.bullish_dollar, totals.bearish_dollar)}</td>
+        <td class="px-4 py-3 text-center">${dirBadge(totalDir)}</td>
+        <td class="px-4 py-3 text-sm text-center text-gray-500">${totals.bullish_count}/${totals.bearish_count}</td>
+      </tr>
+    </tbody>
+  </table>`;
+}
+
+function renderOrders(orders, totalCount) {
+  const rows = orders.map((e, i) => {
+    const exp = (e.xmonth && e.xdate) ? `${e.xmonth}/${e.xdate}` : '';
+    const insight = e.insights ? e.insights.substring(0, 30) : '';
+    const dollarColor = e.direction === 'BULLISH' ? 'text-bull' : (e.direction === 'BEARISH' ? 'text-bear' : 'text-gray-400');
+    return `<tr class="${i % 2 ? 'bg-surface-alt' : 'bg-surface'}">
+      <td class="px-3 py-2 text-center">${dirBadgeShort(e.direction)}</td>
+      <td class="px-3 py-2 text-sm text-cyan-400">${e.source.substring(0, 10)}</td>
+      <td class="px-3 py-2 text-sm">${e.order_date}</td>
+      <td class="px-3 py-2 text-sm text-right text-yellow-400">${e.strike}</td>
+      <td class="px-3 py-2 text-sm text-right">${exp}</td>
+      <td class="px-3 py-2 text-sm text-right ${dollarColor} font-medium">${fmtDollar(e.total_dollar)}</td>
+      <td class="px-3 py-2 text-sm text-right">${fmtQty(e.total_qty)}</td>
+      <td class="px-3 py-2 text-xs text-gray-500 truncate max-w-[200px]">${insight}</td>
+    </tr>`;
+  }).join('');
+
+  const showMore = totalCount > orders.length
+    ? `<div class="text-center text-sm text-gray-500 py-3">Showing ${orders.length} of ${totalCount.toLocaleString()} entries</div>`
+    : '';
+
+  return `<table class="w-full">
+    <thead><tr class="bg-bg">
+      <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Dir</th>
+      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Src</th>
+      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+      <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Strike</th>
+      <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Exp</th>
+      <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total$</th>
+      <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Insight</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>${showMore}`;
+}
+
+// =========================================================================
+// Init
+// =========================================================================
+document.addEventListener('DOMContentLoaded', () => {
+  loadStats();
+  updateTabs();
+});
+</script>
+</body>
+</html>

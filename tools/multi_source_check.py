@@ -173,26 +173,39 @@ def read_floor_entries(config):
 # ---------------------------------------------------------------------------
 
 def _ticker_direction(entries):
-    """Determine direction for each ticker based on flow.
-    Returns dict: {ticker: {"direction": "BULLISH"/"BEARISH", "call_qty": ..., ...}}
+    """Determine direction for each ticker using Order Insights.
+    Returns dict: {ticker: {"direction": "BULLISH"/"BEARISH", "bullish_dollar": ..., ...}}
     """
     ticker_map = {}
     for e in entries:
         t = e["ticker"]
         if t not in ticker_map:
-            ticker_map[t] = {"call_dollar": 0, "put_dollar": 0, "call_qty": 0, "put_qty": 0, "entries": []}
-        ticker_map[t]["call_dollar"] += e["call_dollar"]
-        ticker_map[t]["put_dollar"] += e["put_dollar"]
-        ticker_map[t]["call_qty"] += e["call_qty"]
-        ticker_map[t]["put_qty"] += e["put_qty"]
+            ticker_map[t] = {
+                "bullish_dollar": 0, "bearish_dollar": 0,
+                "bullish_qty": 0, "bearish_qty": 0,
+                "bullish_count": 0, "bearish_count": 0,
+                "entries": [],
+            }
+        total_dollar = e["call_dollar"] + e["put_dollar"]
+        total_qty = e["call_qty"] + e["put_qty"]
+        insights_text = e.get("insights", "").lower()
+
+        if "bullish" in insights_text:
+            ticker_map[t]["bullish_dollar"] += total_dollar
+            ticker_map[t]["bullish_qty"] += total_qty
+            ticker_map[t]["bullish_count"] += 1
+        elif "bearish" in insights_text:
+            ticker_map[t]["bearish_dollar"] += total_dollar
+            ticker_map[t]["bearish_qty"] += total_qty
+            ticker_map[t]["bearish_count"] += 1
+
         ticker_map[t]["entries"].append(e)
 
     result = {}
     for t, data in ticker_map.items():
-        # Direction based on which side has more $ flow
-        if data["call_dollar"] > data["put_dollar"]:
+        if data["bullish_dollar"] > data["bearish_dollar"]:
             direction = "BULLISH"
-        elif data["put_dollar"] > data["call_dollar"]:
+        elif data["bearish_dollar"] > data["bullish_dollar"]:
             direction = "BEARISH"
         else:
             direction = "NEUTRAL"
@@ -235,17 +248,9 @@ def check_multi_source(entries_7day, entries_floor, dry_run=False):
         if d7["direction"] == "NEUTRAL" or df["direction"] == "NEUTRAL":
             continue
 
-        # Query allDay for historical context
+        # Query allDay for historical context (now uses insights-based direction)
         net_flow = query_net_flow(ticker)
-
-        # Determine historical direction
-        if net_flow and (net_flow["net_call_dollar"] != 0 or net_flow["net_put_dollar"] != 0):
-            if net_flow["net_call_dollar"] > net_flow["net_put_dollar"]:
-                hist_direction = "BULLISH"
-            else:
-                hist_direction = "BEARISH"
-        else:
-            hist_direction = None
+        hist_direction = net_flow["direction"] if net_flow else None
 
         # Per-expiry flow breakdown
         expiry_flow = query_net_flow_by_expiry(ticker)
@@ -268,10 +273,10 @@ def check_multi_source(entries_7day, entries_floor, dry_run=False):
                 "side": d7["direction"],
                 "label": ticker,
                 "field": "multi_source",
-                "call_dollar": d7["call_dollar"] + df["call_dollar"],
-                "call_qty": d7["call_qty"] + df["call_qty"],
-                "put_dollar": d7["put_dollar"] + df["put_dollar"],
-                "put_qty": d7["put_qty"] + df["put_qty"],
+                "call_dollar": d7["bullish_dollar"] + df["bullish_dollar"],
+                "call_qty": d7["bullish_qty"] + df["bullish_qty"],
+                "put_dollar": d7["bearish_dollar"] + df["bearish_dollar"],
+                "put_qty": d7["bearish_qty"] + df["bearish_qty"],
             })
 
     if not confirmations:
@@ -305,47 +310,36 @@ def _build_multi_source_message(confirmations):
         df = c["floor"]
         nf = c.get("net_flow")
 
-        direction_emoji = "BULLISH" if c["direction"] == "BULLISH" else "BEARISH"
-
-        lines.append(f"  <b>{c['ticker']}</b> — {direction_emoji}\n")
+        lines.append(f"  <b>{c['ticker']}</b> — {c['direction']}\n")
 
         # 7Day source
-        lines.append(f"  7Day: Call Qty {format_qty(d7['call_qty'])} | "
-                      f"Call$ {format_number(d7['call_dollar'])} | "
-                      f"Put Qty {format_qty(d7['put_qty'])} | "
-                      f"Put$ {format_number(d7['put_dollar'])}")
+        lines.append(f"  7Day: Bullish$ {format_number(d7['bullish_dollar'])} "
+                      f"({d7['bullish_count']}) | "
+                      f"Bearish$ {format_number(d7['bearish_dollar'])} "
+                      f"({d7['bearish_count']})")
 
         # Floor source
-        lines.append(f"  Floor: Call Qty {format_qty(df['call_qty'])} | "
-                      f"Call$ {format_number(df['call_dollar'])} | "
-                      f"Put Qty {format_qty(df['put_qty'])} | "
-                      f"Put$ {format_number(df['put_dollar'])}")
+        lines.append(f"  Floor: Bullish$ {format_number(df['bullish_dollar'])} "
+                      f"({df['bullish_count']}) | "
+                      f"Bearish$ {format_number(df['bearish_dollar'])} "
+                      f"({df['bearish_count']})")
 
         # Historical context (overall) + caution flag
-        if nf and (nf["buy_count"] > 0 or nf["sell_count"] > 0):
+        if nf and (nf["bullish_count"] > 0 or nf["bearish_count"] > 0):
             aligned = c.get("hist_aligned")
             lines.append(
-                f"  History: Net Call$ {format_number(abs(nf['net_call_dollar']))} "
-                f"({'buy' if nf['net_call_dollar'] >= 0 else 'sell'}) | "
-                f"Net Put$ {format_number(abs(nf['net_put_dollar']))} "
-                f"({'buy' if nf['net_put_dollar'] >= 0 else 'sell'})"
+                f"  History: Bullish$ {format_number(nf['bullish_dollar'])} "
+                f"({nf['bullish_count']}) | "
+                f"Bearish$ {format_number(nf['bearish_dollar'])} "
+                f"({nf['bearish_count']})"
             )
-            lines.append(f"  ({nf['buy_count']} buys, {nf['sell_count']} sells in allDay)")
 
             if aligned is True:
                 lines.append(f"  History ALIGNED with today's flow")
             elif aligned is False:
-                # Show opposite-side count as caution
-                direction = c["direction"]
-                if direction == "BULLISH":
-                    opp_count = nf["sell_count"]
-                    opp_label = "selling"
-                else:
-                    opp_count = nf["buy_count"]
-                    opp_label = "buying"
                 lines.append(
                     f"  CAUTION: Historical flow OPPOSED — "
-                    f"{opp_count} prior {opp_label} orders in allDay"
+                    f"allDay shows {nf['direction']}"
                 )
 
         # Per-expiry flow breakdown
@@ -353,14 +347,10 @@ def _build_multi_source_message(confirmations):
         if expiry_flow:
             lines.append("  Flow by Expiry:")
             for ef in expiry_flow:
-                net_total = ef["net_call_dollar"] + ef["net_put_dollar"]
-                sign = "+" if net_total >= 0 else ""
                 lines.append(
                     f"    {ef['expiry_label']}: "
-                    f"Net Call$ {format_number(abs(ef['net_call_dollar']))} "
-                    f"({'buy' if ef['net_call_dollar'] >= 0 else 'sell'}) | "
-                    f"Net Put$ {format_number(abs(ef['net_put_dollar']))} "
-                    f"({'buy' if ef['net_put_dollar'] >= 0 else 'sell'}) "
+                    f"Bullish$ {format_number(ef['bullish_dollar'])} | "
+                    f"Bearish$ {format_number(ef['bearish_dollar'])} "
                     f"[{ef['direction']}]"
                 )
 
