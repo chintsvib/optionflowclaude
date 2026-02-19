@@ -250,6 +250,40 @@ def _load_7day(config):
     return entries
 
 
+def _load_spx_0dte(config):
+    """Load SPX_0DTE buying + selling."""
+    sheet_cfg = config["SPX_0DTE"]
+    header_row = sheet_cfg["header_row"]
+
+    buying_start = sheet_cfg["range_buying"].split(":")[0].rstrip("0123456789")
+    buying_end = sheet_cfg["range_buying"].split(":")[1]
+    selling_start = sheet_cfg["range_selling"].split(":")[0].rstrip("0123456789")
+    selling_end = sheet_cfg["range_selling"].split(":")[1]
+
+    entries = []
+
+    # Buying
+    print(f"\n  SPX_0DTE BUYING...")
+    buy_range = f"{buying_start}{header_row}:{buying_end}"
+    buy_all = read_sheet(sheet_cfg["sheet_url"], sheet_cfg["sheet_name"], buy_range)
+    if buy_all and len(buy_all) >= 2:
+        parsed = _parse_rows("SPX_0DTE", "BUYING", buy_all[0], buy_all[1:])
+        entries.extend(parsed)
+        print(f"    Entries: {len(parsed)}")
+
+    # Selling
+    print(f"  SPX_0DTE SELLING...")
+    sell_range = f"{selling_start}{header_row}:{selling_end}"
+    sell_all = read_sheet(sheet_cfg["sheet_url"], sheet_cfg["sheet_name"], sell_range)
+    if sell_all and len(sell_all) >= 2:
+        parsed = _parse_rows("SPX_0DTE", "SELLING", sell_all[0], sell_all[1:])
+        entries.extend(parsed)
+        print(f"    Entries: {len(parsed)}")
+
+    print(f"  SPX_0DTE total: {len(entries)} entries")
+    return entries
+
+
 def _load_floor(config):
     """Load all Floor sections."""
     entries = []
@@ -333,7 +367,7 @@ def load_all(config=None, sources=None):
             config = json.load(f)
 
     if sources is None:
-        sources = ["allDay", "7Day", "Floor"]
+        sources = ["allDay", "7Day", "SPX_0DTE", "Floor"]
 
     all_entries = []
 
@@ -341,6 +375,8 @@ def load_all(config=None, sources=None):
         all_entries.extend(_load_allday(config))
     if "7Day" in sources:
         all_entries.extend(_load_7day(config))
+    if "SPX_0DTE" in sources and "SPX_0DTE" in config:
+        all_entries.extend(_load_spx_0dte(config))
     if "Floor" in sources:
         all_entries.extend(_load_floor(config))
 
@@ -548,14 +584,14 @@ def main():
         description="Load all sheet data into unified SQLite database",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Sources: allDay, 7Day, Floor
+Sources: allDay, 7Day, SPX_0DTE, Floor
 Examples:
-  python tools/unified_db.py                  # load all sources
-  python tools/unified_db.py --source allDay  # load only allDay
-  python tools/unified_db.py --stats          # show DB stats
+  python tools/unified_db.py                      # load all sources
+  python tools/unified_db.py --source SPX_0DTE    # load only SPX_0DTE
+  python tools/unified_db.py --stats              # show DB stats
         """,
     )
-    parser.add_argument("--source", choices=["allDay", "7Day", "Floor"],
+    parser.add_argument("--source", choices=["allDay", "7Day", "SPX_0DTE", "Floor"],
                         help="Load only a specific source")
     parser.add_argument("--stats", action="store_true",
                         help="Show database statistics")
@@ -568,7 +604,7 @@ Examples:
         return
 
     sources = [args.source] if args.source else None
-    print(f"Loading sources: {sources or ['allDay', '7Day', 'Floor']}")
+    print(f"Loading sources: {sources or ['allDay', '7Day', 'SPX_0DTE', 'Floor']}")
     load_all(sources=sources)
 
 

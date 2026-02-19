@@ -49,6 +49,13 @@
     "header_row": 3,
     "range": "AA4:AM29"
   },
+  "SPX_0DTE": {
+    "sheet_url": "https://docs.google.com/spreadsheets/d/1haxw_Dvo5-MxppiLLt83zjFDwkl1hrMuYHTbtcq7QyU/edit?gid=1210503769#gid=1210503769",
+    "sheet_name": "Advanced 0DTE",
+    "header_row": 12,
+    "range_buying": "A13:I100",
+    "range_selling": "K13:S100"
+  },
   "date_filter": {
     "days_back": 15,
     "comment": "Only include orders from the past N days"

@@ -6,8 +6,10 @@ Runs monitor_7day_alerts every 5 minutes during US market hours
 (Mon-Fri 9:30 AM - 4:00 PM Eastern), then sleeps until next market open.
 """
 
+import os
 import time
 import sys
+import json
 import traceback
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -15,6 +17,9 @@ from zoneinfo import ZoneInfo
 # Import monitors
 from tools.monitor_7day_alerts import main as run_monitor
 from tools.monitor_floor_alerts import main as run_floor_monitor
+
+# Import SPX 0DTE signal monitor
+from tools.monitor_spx_0dte import check_signal as check_spx_0dte_signal
 
 # Import cross-reference engine
 from tools.allday_db import init_db, load_allday_to_db, is_db_loaded_today
@@ -110,6 +115,16 @@ def main():
                 run_floor_monitor()
             except Exception as e:
                 print(f"Floor monitor error (will retry next interval): {e}")
+                traceback.print_exc()
+
+            # SPX 0DTE signal monitor
+            try:
+                cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+                with open(cfg_path, "r") as f:
+                    cfg = json.load(f)
+                check_spx_0dte_signal(cfg, dry_run=first_run)
+            except Exception as e:
+                print(f"SPX 0DTE monitor error (will retry next interval): {e}")
                 traceback.print_exc()
 
             # Multi-source confirmation — DISABLED for analysis tuning
