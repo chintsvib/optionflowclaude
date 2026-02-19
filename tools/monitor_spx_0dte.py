@@ -54,18 +54,24 @@ def check_signal(config, dry_run=False):
 
     # Strip trailing punctuation for matching (cell may have "Buy Puts?" with ?)
     value_clean = value.lower().rstrip("?! ")
-    if value_clean not in ("buy calls", "buy puts"):
-        print("  No actionable signal.")
+
+    # Dedup: track last seen value so we alert on every transition to a buy signal
+    # e.g. "Buy Puts" → "Chop" → "Buy Puts" sends two alerts
+    state = _load_state()
+    last_seen = state.get("last_seen", "")
+
+    if value_clean == last_seen:
+        if value_clean in ("buy calls", "buy puts"):
+            print(f"  Signal unchanged ('{value}'). Skipping.")
+        else:
+            print("  No actionable signal.")
         return
 
-    # Dedup: only alert once per signal change per day
-    state = _load_state()
-    today = str(date.today())
-    last_signal = state.get("last_signal", "")
-    last_date = state.get("last_date", "")
+    # Save what we just saw (always, even non-actionable values)
+    _save_state({"last_seen": value_clean})
 
-    if last_signal == value_clean and last_date == today:
-        print(f"  Already alerted '{value}' today. Skipping.")
+    if value_clean not in ("buy calls", "buy puts"):
+        print("  No actionable signal.")
         return
 
     if value_clean == "buy calls":
@@ -82,7 +88,6 @@ def check_signal(config, dry_run=False):
         return
 
     send_telegram(message)
-    _save_state({"last_signal": value_clean, "last_date": today})
 
 
 def main():
