@@ -52,8 +52,9 @@ def check_signal(config, dry_run=False):
     value = str(data[0][0]).strip()
     print(f"  SPX 0DTE signal cell A4: '{value}'")
 
-    value_lower = value.lower()
-    if value_lower not in ("buy calls", "buy puts"):
+    # Strip trailing punctuation for matching (cell may have "Buy Puts?" with ?)
+    value_clean = value.lower().rstrip("?! ")
+    if value_clean not in ("buy calls", "buy puts"):
         print("  No actionable signal.")
         return
 
@@ -63,11 +64,16 @@ def check_signal(config, dry_run=False):
     last_signal = state.get("last_signal", "")
     last_date = state.get("last_date", "")
 
-    if last_signal == value and last_date == today:
+    if last_signal == value_clean and last_date == today:
         print(f"  Already alerted '{value}' today. Skipping.")
         return
 
-    message = f"<b>SPX 0DTE Alert</b>\n\n{value}"
+    if value_clean == "buy calls":
+        signal_text = "Bullish Flow: Buy Calls?"
+    else:
+        signal_text = "Bearish Flow: Buy Puts?"
+
+    message = f"<b>SPX 0DTE Alert</b>\n\n{signal_text}"
 
     print(f"  ALERT: {value}")
 
@@ -76,7 +82,7 @@ def check_signal(config, dry_run=False):
     else:
         send_telegram(message)
 
-    _save_state({"last_signal": value, "last_date": today})
+    _save_state({"last_signal": value_clean, "last_date": today})
 
 
 def main():
