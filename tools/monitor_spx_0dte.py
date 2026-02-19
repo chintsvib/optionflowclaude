@@ -79,9 +79,9 @@ def check_signal(config, dry_run=False):
 
     if dry_run:
         print(f"  [DRY RUN] Would send: {message}")
-    else:
-        send_telegram(message)
+        return
 
+    send_telegram(message)
     _save_state({"last_signal": value_clean, "last_date": today})
 
 
