@@ -170,8 +170,8 @@ def build_alert_message(alerts):
 
 def main():
     parser = argparse.ArgumentParser(description="Monitor 7Day sheet for large option flows")
-    parser.add_argument("--dollar", type=float, default=1_000_000,
-                        help="Dollar threshold for Call$/Put$ (default: 1000000)")
+    parser.add_argument("--dollar", type=float, default=500_000,
+                        help="Dollar threshold for Call$/Put$ (default: 500000)")
     parser.add_argument("--qty", type=float, default=1_000,
                         help="Quantity threshold for Call Qty/Put Qty (default: 1000)")
     parser.add_argument("--dry-run", action="store_true",

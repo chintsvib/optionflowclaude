@@ -17,7 +17,7 @@ import json
 import re
 import sqlite3
 import argparse
-from datetime import date
+from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -30,7 +30,7 @@ DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(DB_DIR, "unified.db")
 
 # All Floor config keys
-FLOOR_CONFIGS = ["Floor_SPX_0DTE", "Floor_SPX_DTEPlus", "Floor_NDX_0DTE", "Floor_NDX_DTEPlus", "Floor_All"]
+FLOOR_CONFIGS = ["Floor_SPX_0DTE", "Floor_SPX_DTEPlus", "Floor_NDX_0DTE", "Floor_NDX_DTEPlus", "Floor_All", "Floor_All_21DTE"]
 
 
 # ---------------------------------------------------------------------------
@@ -121,16 +121,45 @@ def _parse_rows(source, side_label, headers, data_rows):
         else:
             direction = ""
 
+        xmonth = safe_get(row, xmonth_idx, "").strip()
+        xdate = safe_get(row, xdate_idx, "").strip()
+        xyear = safe_get(row, xyear_idx, "").strip()
+        dte_val = safe_get(row, dte_idx, "").strip()
+
+        # If no xmonth/xdate but DTE is available, compute expiry from today + DTE
+        if not xmonth and not xdate and dte_val:
+            try:
+                expiry_date = date.today() + timedelta(days=int(dte_val))
+                xmonth = str(expiry_date.month)
+                xdate = str(expiry_date.day)
+                xyear = str(expiry_date.year % 100)
+            except (ValueError, TypeError):
+                pass
+
+        # Normalize: strip leading zeros, default year to current
+        if xmonth:
+            try:
+                xmonth = str(int(xmonth))
+            except ValueError:
+                pass
+        if xdate:
+            try:
+                xdate = str(int(xdate))
+            except ValueError:
+                pass
+        if xmonth and xdate and not xyear:
+            xyear = str(date.today().year % 100)
+
         entries.append({
             "source": source,
             "side": side_label,
             "order_date": safe_get(row, date_idx, ""),
             "order_time": safe_get(row, time_idx, ""),
             "ticker": ticker,
-            "xmonth": safe_get(row, xmonth_idx, "").strip(),
-            "xdate": safe_get(row, xdate_idx, "").strip(),
-            "xyear": safe_get(row, xyear_idx, "").strip(),
-            "dte": safe_get(row, dte_idx, ""),
+            "xmonth": xmonth,
+            "xdate": xdate,
+            "xyear": xyear,
+            "dte": dte_val,
             "strike": safe_get(row, strike_idx, "").strip(),
             "trade_price": safe_get(row, trade_price_idx, ""),
             "target_price": safe_get(row, target_price_idx, ""),

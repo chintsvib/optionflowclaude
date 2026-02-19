@@ -43,6 +43,12 @@
     "header_row": 3,
     "range": "AO4:AY29"
   },
+  "Floor_All_21DTE": {
+    "sheet_url": "https://docs.google.com/spreadsheets/d/1A1McRPl8lMTe4WtNfYNTMlvMrGuMlPeVFgGYcSSZvYs/edit?gid=2032701172#gid=2032701172",
+    "sheet_name": "Insightful!",
+    "header_row": 3,
+    "range": "AA4:AM29"
+  },
   "date_filter": {
     "days_back": 15,
     "comment": "Only include orders from the past N days"
