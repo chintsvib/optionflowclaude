@@ -30,7 +30,7 @@ from tools.monitor_utils import (
 STATE_FILE = "floor_alert_state.json"
 
 # Config keys to monitor
-FLOOR_CONFIGS = ["Floor_SPX_0DTE", "Floor_SPX_DTEPlus", "Floor_NDX_0DTE", "Floor_NDX_DTEPlus", "Floor_All"]
+FLOOR_CONFIGS = ["Floor_SPX_0DTE", "Floor_SPX_DTEPlus", "Floor_NDX_0DTE", "Floor_NDX_DTEPlus", "Floor_All", "Floor_All_21DTE"]
 
 
 # ---------------------------------------------------------------------------
@@ -130,27 +130,22 @@ def check_floor_rows(config_name, headers, data_rows):
     return alerts
 
 
+def _alert_header(config_name):
+    """Map config name to alert header."""
+    if "NDX" in config_name:
+        return "NDX Alert"
+    return "Insightful Alert"
+
+
 def build_floor_message(alerts, config_name):
     """Build a Telegram-friendly HTML alert message for floor alerts."""
-    now = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M ET")
-    display_name = config_name.replace("_", " ")
-    lines = [f"<b>{display_name} Alert</b>  ({now})\n"]
+    header = _alert_header(config_name)
+    lines = [f"<b>{header}</b>\n"]
 
     for a in alerts:
-        row_time = a.get("time", "")
-        time_line = f"  {row_time}\n" if row_time else ""
+        ticker = a["label"].split()[0] if a.get("label") else "???"
+        insights = a.get("insights", "")
 
-        # Trade Price and Target Price
-        trade_price = a.get("trade_price", "")
-        target_price = a.get("target_price", "")
-        price_parts = []
-        if trade_price:
-            price_parts.append(f"Trade: {trade_price}")
-        if target_price:
-            price_parts.append(f"Target: {target_price}")
-        price_line = f"  {' | '.join(price_parts)}\n" if price_parts else ""
-
-        # Qty and $ lines
         flow_parts = []
         call_qty = a.get("call_qty", 0)
         call_dollar = a.get("call_dollar", 0)
@@ -158,24 +153,16 @@ def build_floor_message(alerts, config_name):
         put_dollar = a.get("put_dollar", 0)
 
         if call_qty > 0 or call_dollar > 0:
-            flow_parts.append(f"  Call Qty: <b>{format_qty(call_qty)}</b>  |  Call$: <b>{format_number(call_dollar)}</b>")
+            flow_parts.append(f"Call Qty: <b>{format_qty(call_qty)}</b>  |  Call$: <b>{format_number(call_dollar)}</b>")
         if put_qty > 0 or put_dollar > 0:
-            flow_parts.append(f"  Put Qty: <b>{format_qty(put_qty)}</b>  |  Put$: <b>{format_number(put_dollar)}</b>")
+            flow_parts.append(f"Put Qty: <b>{format_qty(put_qty)}</b>  |  Put$: <b>{format_number(put_dollar)}</b>")
         flow_line = "\n".join(flow_parts) + "\n" if flow_parts else ""
 
-        # Order Insights
-        insights = a.get("insights", "")
-        insights_line = f"  Insight: <i>{insights}</i>\n" if insights else ""
-
         lines.append(
-            f"{time_line}"
-            f"  <b>{a['label']}</b>\n"
-            f"{price_line}"
+            f"<b>{ticker}</b> {insights}\n"
             f"{flow_line}"
-            f"{insights_line}"
         )
 
-    lines.append(f"Total alerts: {len(alerts)}")
     return "\n".join(lines)
 
 

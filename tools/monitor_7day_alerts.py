@@ -120,8 +120,7 @@ def check_side(side_label, headers, data_rows, dollar_threshold, qty_threshold):
 
 def build_alert_message(alerts):
     """Build a Telegram-friendly HTML alert message."""
-    now = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M ET")
-    lines = [f"<b>7DTE Option Flow Alert</b>  ({now})\n"]
+    lines = [f"<b>7DTE Alert</b>\n"]
 
     for a in alerts:
         side_type = a["field"]  # "Call" or "Put"
@@ -133,34 +132,15 @@ def build_alert_message(alerts):
             dollar_val = a.get("put_dollar", 0)
             qty_val = a.get("put_qty", 0)
 
-        # Date/time from the sheet row
-        when = f"{a.get('date', '')} {a.get('time', '')}".strip()
-        when_line = f"  {when}\n" if when else ""
-
-        # Trade Price and Target Price
-        trade_price = a.get("trade_price", "")
-        target_price = a.get("target_price", "")
-        price_parts = []
-        if trade_price:
-            price_parts.append(f"Trade: {trade_price}")
-        if target_price:
-            price_parts.append(f"Target: {target_price}")
-        price_line = f"  {' | '.join(price_parts)}\n" if price_parts else ""
-
-        # Order Insights
+        ticker = a["label"].split()[0] if a.get("label") else "???"
         insights = a.get("insights", "")
-        insights_line = f"  Insight: <i>{insights}</i>\n" if insights else ""
 
         lines.append(
-            f"{when_line}"
-            f"  <b>{a['label']}</b> ({a['side']})\n"
-            f"{price_line}"
-            f"  {side_type} Qty: <b>{format_qty(qty_val)}</b>  |  "
+            f"<b>{ticker}</b> {insights}\n"
+            f"{side_type} Qty: <b>{format_qty(qty_val)}</b>  |  "
             f"{side_type}$: <b>{format_number(dollar_val)}</b>\n"
-            f"{insights_line}"
         )
 
-    lines.append(f"Total alerts: {len(alerts)}")
     return "\n".join(lines)
 
 
