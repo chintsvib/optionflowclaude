@@ -493,9 +493,22 @@ function renderByExpiry(expiries) {
   const totalDir = totals.bullish_dollar > totals.bearish_dollar ? 'BULLISH' : (totals.bearish_dollar > totals.bullish_dollar ? 'BEARISH' : 'NEUTRAL');
   const maxDollar = Math.max(...expiries.map(e => e.bullish_dollar + e.bearish_dollar), 1);
 
-  const rows = expiries.map((e, i) => `
-    <tr class="${i % 2 ? 'bg-surface-alt' : 'bg-surface'}">
-      <td class="px-4 py-2 text-sm font-medium text-white">${e.expiry}</td>
+  const thSort = (i, col, label, align, color) => {
+    const cls = `px-3 py-2 text-[10px] font-medium uppercase cursor-pointer hover:text-white transition ${align} ${color}`;
+    return `<th class="${cls}" onclick="sortExpiryOrders(${i},'${col}')">${label} <span class="expiry-sort-arrow" data-col="${col}"></span></th>`;
+  };
+
+  const rows = expiries.map((e, i) => {
+    const orderRows = renderExpiryOrderRows(e.orders || []);
+
+    return `
+    <tr class="${i % 2 ? 'bg-surface-alt' : 'bg-surface'} cursor-pointer hover:bg-border/40 transition" onclick="toggleExpiry('expiry-detail-${i}', this)">
+      <td class="px-4 py-2 text-sm font-medium text-white flex items-center gap-2">
+        <svg class="w-3 h-3 text-gray-500 transition-transform expiry-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+        ${e.expiry}
+      </td>
       <td class="px-4 py-2 text-sm text-right text-bull">${fmtDollar(e.bullish_dollar)}</td>
       <td class="px-4 py-2 text-sm text-right text-bear">${fmtDollar(e.bearish_dollar)}</td>
       <td class="px-4 py-2 text-sm text-right text-bull">${fmtQty(e.bullish_qty)}</td>
@@ -504,7 +517,30 @@ function renderByExpiry(expiries) {
       <td class="px-4 py-2 text-center">${dirBadge(e.direction)}</td>
       <td class="px-4 py-2 text-sm text-center text-gray-500">${e.bullish_count}/${e.bearish_count}</td>
     </tr>
-  `).join('');
+    <tr id="expiry-detail-${i}" class="hidden">
+      <td colspan="8" class="p-0">
+        <div class="bg-bg/60 border-y border-border/50 px-6 py-3">
+          <table class="w-full">
+            <thead><tr class="border-b border-border/40">
+              ${thSort(i, 'direction', 'Dir', 'text-center', 'text-gray-500')}
+              ${thSort(i, 'order_date', 'Date', 'text-left', 'text-gray-500')}
+              ${thSort(i, 'strike', 'Strike', 'text-right', 'text-gray-500')}
+              ${thSort(i, 'trade_price', 'Trade$', 'text-right', 'text-gray-500')}
+              ${thSort(i, 'target_price', 'Target$', 'text-right', 'text-gray-500')}
+              ${thSort(i, 'call_qty', 'Call Qty', 'text-right', 'text-bull')}
+              ${thSort(i, 'call_dollar', 'Call$', 'text-right', 'text-bull')}
+              ${thSort(i, 'put_qty', 'Put Qty', 'text-right', 'text-bear')}
+              ${thSort(i, 'put_dollar', 'Put$', 'text-right', 'text-bear')}
+              ${thSort(i, 'total_dollar', 'Total$', 'text-right', 'text-gray-500')}
+              ${thSort(i, 'source', 'Source', 'text-left', 'text-gray-500')}
+              ${thSort(i, 'insights', 'Insight', 'text-left', 'text-gray-500')}
+            </tr></thead>
+            <tbody id="expiry-orders-${i}">${orderRows}</tbody>
+          </table>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 
   return `<table class="w-full">
     <thead><tr class="bg-bg">
@@ -519,7 +555,7 @@ function renderByExpiry(expiries) {
     </tr></thead>
     <tbody>${rows}
       <tr class="bg-bg border-t-2 border-border font-bold">
-        <td class="px-4 py-3 text-sm text-white">TOTAL</td>
+        <td class="px-4 py-3 text-sm text-white pl-10">TOTAL</td>
         <td class="px-4 py-3 text-sm text-right text-bull">${fmtDollar(totals.bullish_dollar)}</td>
         <td class="px-4 py-3 text-sm text-right text-bear">${fmtDollar(totals.bearish_dollar)}</td>
         <td class="px-4 py-3 text-sm text-right text-bull">${fmtQty(totals.bullish_qty)}</td>
@@ -530,6 +566,76 @@ function renderByExpiry(expiries) {
       </tr>
     </tbody>
   </table>`;
+}
+
+function renderExpiryOrderRows(orders) {
+  return orders.map((o, j) => {
+    const dollarColor = o.direction === 'BULLISH' ? 'text-bull' : (o.direction === 'BEARISH' ? 'text-bear' : 'text-gray-400');
+    const insight = o.insights ? o.insights.substring(0, 40) : '';
+    return `<tr class="${j % 2 ? 'bg-bg' : 'bg-surface'}">
+      <td class="px-3 py-1.5 text-xs text-center">${dirBadgeShort(o.direction)}</td>
+      <td class="px-3 py-1.5 text-xs">${o.order_date}</td>
+      <td class="px-3 py-1.5 text-xs text-right text-yellow-400">${o.strike}</td>
+      <td class="px-3 py-1.5 text-xs text-right">${o.trade_price}</td>
+      <td class="px-3 py-1.5 text-xs text-right">${o.target_price}</td>
+      <td class="px-3 py-1.5 text-xs text-right text-bull">${fmtQty(o.call_qty)}</td>
+      <td class="px-3 py-1.5 text-xs text-right text-bull">${fmtDollar(o.call_dollar)}</td>
+      <td class="px-3 py-1.5 text-xs text-right text-bear">${fmtQty(o.put_qty)}</td>
+      <td class="px-3 py-1.5 text-xs text-right text-bear">${fmtDollar(o.put_dollar)}</td>
+      <td class="px-3 py-1.5 text-xs ${dollarColor} font-medium text-right">${fmtDollar(o.total_dollar)}</td>
+      <td class="px-3 py-1.5 text-xs text-cyan-400">${o.source.substring(0, 12)}</td>
+      <td class="px-3 py-1.5 text-xs text-gray-500 truncate max-w-[160px]">${insight}</td>
+    </tr>`;
+  }).join('');
+}
+
+function toggleExpiry(detailId, headerRow) {
+  const detail = document.getElementById(detailId);
+  const chevron = headerRow.querySelector('.expiry-chevron');
+  if (detail.classList.contains('hidden')) {
+    detail.classList.remove('hidden');
+    chevron.style.transform = 'rotate(90deg)';
+  } else {
+    detail.classList.add('hidden');
+    chevron.style.transform = '';
+  }
+}
+
+// Track sort state per expiry: { expiryIdx: { col, asc } }
+const expirySortState = {};
+
+function sortExpiryOrders(expiryIdx, col) {
+  const expiries = state.lastData && state.lastData.expiries;
+  if (!expiries || !expiries[expiryIdx]) return;
+
+  const prev = expirySortState[expiryIdx];
+  const asc = (prev && prev.col === col) ? !prev.asc : (col === 'total_dollar' || col === 'call_dollar' || col === 'put_dollar' || col === 'call_qty' || col === 'put_qty' ? false : true);
+  expirySortState[expiryIdx] = { col, asc };
+
+  const numericCols = ['strike', 'trade_price', 'target_price', 'call_qty', 'call_dollar', 'put_qty', 'put_dollar', 'total_dollar'];
+  const isNumeric = numericCols.includes(col);
+
+  const orders = expiries[expiryIdx].orders;
+  orders.sort((a, b) => {
+    let va = a[col] ?? '', vb = b[col] ?? '';
+    if (isNumeric) { va = parseFloat(va) || 0; vb = parseFloat(vb) || 0; }
+    else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+    if (va < vb) return asc ? -1 : 1;
+    if (va > vb) return asc ? 1 : -1;
+    return 0;
+  });
+
+  // Re-render tbody
+  const tbody = document.getElementById(`expiry-orders-${expiryIdx}`);
+  if (tbody) tbody.innerHTML = renderExpiryOrderRows(orders);
+
+  // Update sort arrows in this expiry's detail row
+  const detail = document.getElementById(`expiry-detail-${expiryIdx}`);
+  if (detail) {
+    detail.querySelectorAll('.expiry-sort-arrow').forEach(el => {
+      el.textContent = el.dataset.col === col ? (asc ? '\u25B2' : '\u25BC') : '';
+    });
+  }
 }
 
 function renderBySource(sources) {

@@ -281,8 +281,9 @@ async def query_flow(
 
 
 def _group_by_expiry(entries, sort_mode):
-    """Group entries by expiry date."""
+    """Group entries by expiry date, including individual orders."""
     expiry_map = {}
+    expiry_orders = {}
     for e in entries:
         key = f"{e['xmonth']}/{e['xdate']}"
         if e["xyear"]:
@@ -296,7 +297,9 @@ def _group_by_expiry(entries, sort_mode):
                 "bullish_qty": 0, "bearish_qty": 0,
                 "bullish_count": 0, "bearish_count": 0,
             }
+            expiry_orders[key] = []
         m = expiry_map[key]
+        expiry_orders[key].append(e)
         if e["direction"] == "BULLISH":
             m["bullish_dollar"] += e["total_dollar"]
             m["bullish_qty"] += e["total_qty"]
@@ -311,7 +314,9 @@ def _group_by_expiry(entries, sort_mode):
         net = m["bullish_dollar"] - m["bearish_dollar"]
         d = "BULLISH" if m["bullish_dollar"] > m["bearish_dollar"] else (
             "BEARISH" if m["bearish_dollar"] > m["bullish_dollar"] else "NEUTRAL")
-        result.append({"expiry": exp, "net_dollar": net, "direction": d, **m})
+        # Sort individual orders by total_dollar descending
+        orders = sorted(expiry_orders[exp], key=lambda o: o["total_dollar"], reverse=True)
+        result.append({"expiry": exp, "net_dollar": net, "direction": d, "orders": orders, **m})
 
     if sort_mode == "expiry":
         result.sort(key=lambda e: _parse_expiry(
