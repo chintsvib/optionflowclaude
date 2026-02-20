@@ -30,7 +30,7 @@ from tools.monitor_utils import (
 STATE_FILE = "floor_alert_state.json"
 
 # Config keys to monitor
-FLOOR_CONFIGS = ["Floor_SPX_0DTE", "Floor_SPX_DTEPlus", "Floor_NDX_0DTE", "Floor_NDX_DTEPlus", "Floor_All_21DTE"]
+FLOOR_CONFIGS = ["Floor_SPX_0DTE", "Floor_SPX_DTEPlus", "Floor_NDX_0DTE", "Floor_NDX_DTEPlus"]
 
 
 # ---------------------------------------------------------------------------
