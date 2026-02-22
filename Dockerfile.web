@@ -1,0 +1,22 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir \
+    python-dotenv>=1.0.0 \
+    google-api-python-client>=2.0.0 \
+    google-auth-httplib2>=0.1.0 \
+    google-auth-oauthlib>=1.0.0 \
+    fastapi>=0.115.0 \
+    "uvicorn[standard]>=0.32.0"
+
+# Copy app code
+COPY config.json .
+COPY tools/__init__.py tools/
+COPY tools/read_google_sheet.py tools/
+COPY tools/monitor_utils.py tools/
+COPY tools/unified_db.py tools/
+COPY web/app.py web/
+COPY web/index.html web/
+
+CMD uvicorn web.app:app --host 0.0.0.0 --port ${PORT:-8080}
