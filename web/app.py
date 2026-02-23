@@ -159,7 +159,7 @@ def _parse_expiry(xmonth, xdate, xyear):
 
 @app.get("/api/flow")
 async def query_flow(
-    ticker: str,
+    ticker: str = Query(None),
     days: int = Query(0, ge=0),
     source: str = Query(None),
     side: str = Query("both"),
@@ -168,13 +168,17 @@ async def query_flow(
     min_qty: float = Query(0, ge=0),
     view: str = Query("orders"),
 ):
-    ticker = ticker.upper()
+    if ticker:
+        ticker = ticker.upper()
     conn = get_connection()
 
     # Build query
-    conditions = ["ticker = ?"]
-    params = [ticker]
+    conditions = []
+    params = []
 
+    if ticker:
+        conditions.append("ticker = ?")
+        params.append(ticker)
     if source:
         conditions.append("source = ?")
         params.append(source)
@@ -182,7 +186,7 @@ async def query_flow(
         conditions.append("side = ?")
         params.append(side.upper())
 
-    where = " AND ".join(conditions)
+    where = " AND ".join(conditions) if conditions else "1=1"
     rows = conn.execute(f"""
         SELECT source, side, order_date, order_time, ticker, xmonth, xdate, xyear,
                dte, strike, trade_price, target_price,
@@ -213,7 +217,13 @@ async def query_flow(
         if min_qty > 0 and total_qty < min_qty:
             continue
 
+        # Skip expired contracts
+        expiry = _parse_expiry(r["xmonth"], r["xdate"], r["xyear"])
+        if expiry < datetime.now().date():
+            continue
+
         entries.append({
+            "ticker": r["ticker"] or "",
             "source": r["source"] or "",
             "side": r["side"] or "",
             "order_date": r["order_date"] or "",
@@ -264,18 +274,64 @@ async def query_flow(
     }
 
     result = {
-        "ticker": ticker,
+        "ticker": ticker or "ALL",
         "total_count": total_count,
         "filtered_count": len(entries),
         "summary": summary,
     }
 
-    if view == "by_expiry":
+    if view == "by_ticker":
+        result["tickers"] = _group_by_ticker(entries, sort)
+    elif view == "by_expiry":
         result["expiries"] = _group_by_expiry(entries, sort)
     elif view == "by_source":
         result["sources_breakdown"] = _group_by_source(entries)
     else:
         result["orders"] = entries[:200]
+
+    return result
+
+
+def _group_by_ticker(entries, sort_mode):
+    """Group entries by ticker, then by expiry within each ticker."""
+    ticker_map = {}
+    ticker_entries = {}
+    for e in entries:
+        tk = e["ticker"]
+        if tk not in ticker_map:
+            ticker_map[tk] = {
+                "bullish_dollar": 0, "bearish_dollar": 0,
+                "bullish_qty": 0, "bearish_qty": 0,
+                "bullish_count": 0, "bearish_count": 0,
+            }
+            ticker_entries[tk] = []
+        m = ticker_map[tk]
+        ticker_entries[tk].append(e)
+        if e["direction"] == "BULLISH":
+            m["bullish_dollar"] += e["total_dollar"]
+            m["bullish_qty"] += e["total_qty"]
+            m["bullish_count"] += 1
+        elif e["direction"] == "BEARISH":
+            m["bearish_dollar"] += e["total_dollar"]
+            m["bearish_qty"] += e["total_qty"]
+            m["bearish_count"] += 1
+
+    result = []
+    for tk, m in ticker_map.items():
+        net = m["bullish_dollar"] - m["bearish_dollar"]
+        d = "BULLISH" if m["bullish_dollar"] > m["bearish_dollar"] else (
+            "BEARISH" if m["bearish_dollar"] > m["bullish_dollar"] else "NEUTRAL")
+        expiries = _group_by_expiry(ticker_entries[tk], "expiry")
+        result.append({
+            "ticker": tk, "net_dollar": net, "direction": d,
+            "expiries": expiries, **m,
+        })
+
+    # Sort tickers
+    if sort_mode == "qty":
+        result.sort(key=lambda t: t["bullish_qty"] + t["bearish_qty"], reverse=True)
+    else:
+        result.sort(key=lambda t: t["bullish_dollar"] + t["bearish_dollar"], reverse=True)
 
     return result
 
