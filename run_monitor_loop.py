@@ -82,14 +82,21 @@ def main():
     print("\nInitializing allDay database...")
     init_db()
 
-    # First run after deploy: seed dedup state without sending alerts
-    # (Railway's ephemeral filesystem wipes state files on each deploy)
+    # First run after deploy OR new calendar day: seed dedup state without
+    # sending alerts.  Railway's ephemeral filesystem wipes state files on
+    # each deploy, and load_state() resets the seen-set when the date
+    # changes — so we must do a dry-run seed in both cases.
     first_run = True
+    last_run_date = None          # track the ET date of the last successful run
 
     while True:
         if is_market_hours():
-            if first_run:
-                print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] First run — seeding dedup state (no alerts)...")
+            today_str = now_et().strftime("%Y-%m-%d")
+            need_seed = first_run or (last_run_date is not None and last_run_date != today_str)
+
+            if need_seed:
+                reason = "First run" if first_run else "New trading day"
+                print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] {reason} — seeding dedup state (no alerts)...")
                 sys.argv = [sys.argv[0], "--dry-run"]
             else:
                 print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] Running monitors...")
@@ -122,7 +129,7 @@ def main():
                 cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
                 with open(cfg_path, "r") as f:
                     cfg = json.load(f)
-                check_spx_0dte_signal(cfg, dry_run=first_run)
+                check_spx_0dte_signal(cfg, dry_run=need_seed)
             except Exception as e:
                 print(f"SPX 0DTE monitor error (will retry next interval): {e}")
                 traceback.print_exc()
@@ -134,10 +141,12 @@ def main():
             #     print(f"Multi-source check error (will retry next interval): {e}")
             #     traceback.print_exc()
 
-            if first_run:
+            if need_seed:
                 sys.argv = [sys.argv[0]]
                 first_run = False
                 print("Dedup state seeded. Next run will send real alerts.")
+
+            last_run_date = today_str
 
             print(f"Sleeping {INTERVAL_SECONDS // 60} minutes...")
             time.sleep(INTERVAL_SECONDS)
