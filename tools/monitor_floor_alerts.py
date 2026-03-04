@@ -38,14 +38,17 @@ FLOOR_CONFIGS = ["Floor_SPX_0DTE", "Floor_SPX_DTEPlus", "Floor_NDX_0DTE", "Floor
 # ---------------------------------------------------------------------------
 
 def _floor_alert_key(alert):
-    """Create a unique key for a floor alert based on row content hash."""
-    raw = f"{alert.get('monitor', '')}|{alert.get('row_hash', '')}"
+    """Create a unique key for a floor alert based on stable identifying fields.
+
+    Uses ticker label + insights + call/put qty & dollar values so that
+    cosmetic sheet changes (time column updates, recalculated cells) don't
+    cause the same logical order to be re-alerted.
+    """
+    raw = (f"{alert.get('monitor', '')}|{alert.get('label', '')}|"
+           f"{alert.get('insights', '')}|"
+           f"{alert.get('call_qty', 0)}|{alert.get('call_dollar', 0)}|"
+           f"{alert.get('put_qty', 0)}|{alert.get('put_dollar', 0)}")
     return hashlib.md5(raw.encode()).hexdigest()
-
-
-def _row_hash(row):
-    """Hash the full row content to detect unique rows."""
-    return hashlib.md5("|".join(str(c) for c in row).encode()).hexdigest()
 
 
 def check_floor_rows(config_name, headers, data_rows):
@@ -114,7 +117,6 @@ def check_floor_rows(config_name, headers, data_rows):
 
         alert = {
             "monitor": config_name,
-            "row_hash": _row_hash(row),
             "label": label,
             "time": row_time,
             "trade_price": trade_price,
