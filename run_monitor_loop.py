@@ -110,12 +110,12 @@ def main():
                     print(f"allDay DB load error: {e}")
                     traceback.print_exc()
 
-            # 7DTE monitor — DISABLED (alerts removed)
-            # try:
-            #     run_monitor()
-            # except Exception as e:
-            #     print(f"7DTE monitor error (will retry next interval): {e}")
-            #     traceback.print_exc()
+            # 7DTE monitor — high-conviction alerts only (OF_Bot)
+            try:
+                run_monitor()
+            except Exception as e:
+                print(f"7DTE monitor error (will retry next interval): {e}")
+                traceback.print_exc()
 
             # Floor Trader monitor
             try:

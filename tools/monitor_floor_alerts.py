@@ -256,6 +256,26 @@ def main():
                     success = send_telegram(message)
                     if not success:
                         print(f"Failed to send Telegram alert for {cfg_name}.")
+
+                # --- High-conviction alerts → OF_Bot ---
+                # Qty > 2000 and insight contains "very bullish" or "very bearish"
+                hc_alerts = [a for a in new_section
+                             if (a.get("call_qty", 0) > 2000 or a.get("put_qty", 0) > 2000)
+                             and ("very bullish" in a.get("insights", "").lower()
+                                  or "very bearish" in a.get("insights", "").lower())]
+                if hc_alerts:
+                    of_token = os.getenv("OF_BOT_TOKEN")
+                    of_chat = os.getenv("OF_BOT_CHAT_ID")
+                    if of_token and of_chat:
+                        hc_msg = build_floor_message(hc_alerts, config_name=cfg_name)
+                        hc_msg = "🔥 <b>HIGH CONVICTION</b>\n\n" + hc_msg
+                        if args.dry_run:
+                            print(f"\n[DRY RUN] OF_Bot high-conviction alert:\n{hc_msg}")
+                        else:
+                            print(f"\nSending HIGH CONVICTION alert via OF_Bot ({len(hc_alerts)} orders)...")
+                            send_telegram(hc_msg, bot_token=of_token, chat_id=of_chat)
+                    else:
+                        print("  OF_BOT_TOKEN/OF_BOT_CHAT_ID not set — skipping high-conviction alert.")
             else:
                 print(f"  No NEW alerts for {cfg_name} since last run.")
 
