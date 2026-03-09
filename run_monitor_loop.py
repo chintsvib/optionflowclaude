@@ -156,11 +156,14 @@ def main():
             next_open = now_et() + timedelta(seconds=wait)
             print(f"\n[{now_et().strftime('%Y-%m-%d %H:%M:%S ET')}] Market closed.")
             print(f"Next open: {next_open.strftime('%A %Y-%m-%d %H:%M ET')} ({wait_hours:.1f} hours)")
-            # Sleep in chunks so we can log periodically
+            # Sleep in chunks, logging heartbeat so Railway doesn't kill the process
             while wait > 0:
-                chunk = min(wait, 3600)  # sleep max 1 hour at a time
+                chunk = min(wait, 1800)  # 30-min chunks
                 time.sleep(chunk)
                 wait -= chunk
+                if wait > 0:
+                    remaining = wait / 3600
+                    print(f"[{now_et().strftime('%H:%M ET')}] Heartbeat — market opens in {remaining:.1f}h")
 
 
 if __name__ == "__main__":
