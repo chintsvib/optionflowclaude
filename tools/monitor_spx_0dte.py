@@ -52,32 +52,35 @@ def check_signal(config, dry_run=False):
     value = str(data[0][0]).strip()
     print(f"  SPX 0DTE signal cell A4: '{value}'")
 
-    # Strip trailing punctuation for matching (cell may have "Buy Puts?" with ?)
-    value_clean = value.lower().rstrip("?! ")
+    # Normalize: lowercase, strip punctuation, detect signal via substring
+    value_lower = value.lower().rstrip("?! ")
+    has_buy_calls = "buy calls" in value_lower
+    has_buy_puts = "buy puts" in value_lower
+    signal_key = "buy_calls" if has_buy_calls else ("buy_puts" if has_buy_puts else "none")
 
-    # Dedup: track last seen value so we alert on every transition to a buy signal
+    # Dedup: track last seen signal so we alert on every transition
     # e.g. "Buy Puts" → "Chop" → "Buy Puts" sends two alerts
     state = _load_state()
-    last_seen = state.get("last_seen", "")
+    last_signal = state.get("last_signal", "none")
 
-    if value_clean == last_seen:
-        if value_clean in ("buy calls", "buy puts"):
+    if signal_key == last_signal:
+        if signal_key != "none":
             print(f"  Signal unchanged ('{value}'). Skipping.")
         else:
             print("  No actionable signal.")
         return
 
     # Save what we just saw (always, even non-actionable values)
-    _save_state({"last_seen": value_clean})
+    _save_state({"last_signal": signal_key})
 
-    if value_clean not in ("buy calls", "buy puts"):
+    if signal_key == "none":
         print("  No actionable signal.")
         return
 
-    if value_clean == "buy calls":
-        signal_text = "Bullish Flow: Buy Calls?"
+    if has_buy_calls:
+        signal_text = "Bullish Flow: Buy Calls"
     else:
-        signal_text = "Bearish Flow: Buy Puts?"
+        signal_text = "Bearish Flow: Buy Puts"
 
     message = f"<b>SPX 0DTE Alert</b>\n\n{signal_text}"
 
