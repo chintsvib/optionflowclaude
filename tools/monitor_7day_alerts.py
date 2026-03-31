@@ -240,6 +240,17 @@ def main():
     message = build_alert_message(new_alerts)
     print(message)
 
+    # Send alerts with qty > 2000 to main Telegram bot
+    large_qty_alerts = [a for a in new_alerts
+                        if a.get("call_qty", 0) > 2000 or a.get("put_qty", 0) > 2000]
+    if large_qty_alerts:
+        large_msg = "📊 <b>Large Order Alert (7DTE)</b>\n\n" + build_alert_message(large_qty_alerts)
+        if args.dry_run:
+            print(f"\n[DRY RUN] Large qty alert:\n{large_msg}")
+        else:
+            print(f"\nSending large qty alert ({len(large_qty_alerts)} orders)...")
+            send_telegram(large_msg)
+
     # 7DTE: Only send high-conviction alerts to OF_Bot (no Trade Insightfully alerts)
     hc_alerts = [a for a in new_alerts
                  if (a.get("call_qty", 0) > 2000 or a.get("put_qty", 0) > 2000)
@@ -259,6 +270,62 @@ def main():
             print("  OF_BOT_TOKEN/OF_BOT_CHAT_ID not set — skipping high-conviction alert.")
 
     print("\nDone.")
+
+
+def get_high_conviction_alerts(dollar_threshold=500_000, qty_threshold=1_000,
+                                hc_qty_threshold=1_000, hc_dollar_threshold=1_000_000):
+    """
+    Run 7DTE check and return high-conviction alerts WITHOUT sending Telegram.
+
+    Used by the IBKR trader to evaluate signals.
+
+    HC filter: BUYING side, Call/Put Qty > 1000 OR Call/Put Premium > $1M
+    EMA confirmation is handled by IBKRTrader.evaluate_signal().
+
+    Returns: list of new, deduplicated HC alert dicts
+    """
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+    with open(config_path, "r") as f:
+        config = json.load(f)
+
+    sheet_cfg = config["7Day"]
+    header_row = sheet_cfg["header_row"]
+    buying_range_col = sheet_cfg["range_buying"].split(":")[1]
+    buying_start_col = sheet_cfg["range_buying"].split(":")[0].rstrip("0123456789")
+
+    # Read BUYING side only
+    buying_all = read_sheet(sheet_cfg["sheet_url"], sheet_cfg["sheet_name"],
+                            f"{buying_start_col}{header_row}:{buying_range_col}")
+
+    buying_headers = buying_all[0] if buying_all and len(buying_all) >= 2 else []
+    buying_data = buying_all[1:] if buying_all and len(buying_all) >= 2 else []
+
+    all_alerts = []
+    if buying_headers:
+        all_alerts.extend(check_side("BUYING", buying_headers, buying_data,
+                                     dollar_threshold, qty_threshold))
+
+    if not all_alerts:
+        return []
+
+    # Deduplicate using a separate state file so we don't interfere with main alerts
+    new_alerts = filter_new_alerts(all_alerts, "7day_hc_trade_state.json")
+    if not new_alerts:
+        return []
+
+    # HC filter: Qty > 1000 OR Premium > $1M
+    hc_alerts = [
+        a for a in new_alerts
+        if a.get("side") == "BUYING"
+        and (
+            a.get("call_qty", 0) > hc_qty_threshold
+            or a.get("put_qty", 0) > hc_qty_threshold
+            or a.get("call_dollar", 0) > hc_dollar_threshold
+            or a.get("put_dollar", 0) > hc_dollar_threshold
+        )
+    ]
+
+    return hc_alerts
 
 
 if __name__ == "__main__":
