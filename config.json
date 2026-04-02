@@ -8,7 +8,7 @@
   },
   "7Day": {
     "sheet_url": "https://docs.google.com/spreadsheets/d/18LEnInF0aijgnwZ8a7MOS3rSfJT7jrvxeRKM5t5Ebgk/edit?gid=1545481828#gid=1545481828",
-    "sheet_name": "Today's <7DTE",
+    "sheet_name": "Todays <7DTE",
     "header_row": 4,
     "range_buying": "A5:O",
     "range_selling": "R5:AE"

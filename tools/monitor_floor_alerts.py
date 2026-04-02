@@ -147,6 +147,8 @@ def build_floor_message(alerts, config_name):
     for a in alerts:
         ticker = a["label"].split()[0] if a.get("label") else "???"
         insights = a.get("insights", "")
+        if "buy calls" in insights.lower() or "buy puts" in insights.lower():
+            insights = insights + "?"
 
         flow_parts = []
         call_qty = a.get("call_qty", 0)
