@@ -78,9 +78,9 @@ def check_signal(config, dry_run=False):
         return
 
     if has_buy_calls:
-        signal_text = "Bullish Flow: Buy Calls"
+        signal_text = "Bullish Flow: Buy Calls?"
     else:
-        signal_text = "Bearish Flow: Buy Puts"
+        signal_text = "Bearish Flow: Buy Puts?"
 
     message = f"<b>SPX 0DTE Alert</b>\n\n{signal_text}"
 
