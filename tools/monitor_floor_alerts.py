@@ -162,8 +162,18 @@ def build_floor_message(alerts, config_name):
             flow_parts.append(f"Put Qty: <b>{format_qty(put_qty)}</b>  |  Put$: <b>{format_number(put_dollar)}</b>")
         flow_line = "\n".join(flow_parts) + "\n" if flow_parts else ""
 
+        strike = a.get("strike", "")
+        trade_price = a.get("trade_price", "")
+        detail_parts = []
+        if strike:
+            detail_parts.append(f"Strike: {strike}")
+        if trade_price:
+            detail_parts.append(f"Trade Price: {trade_price}")
+        detail_line = "  |  ".join(detail_parts) + "\n" if detail_parts else ""
+
         lines.append(
             f"<b>{ticker}</b> {insights}\n"
+            f"{detail_line}"
             f"{flow_line}"
         )
 
